@@ -1,6 +1,6 @@
 - id: check-commit-message
   name: Check commit message body
   description: 检查 Commit 正文是否存在、达到最低有效长度且不包含占位符。
-  entry: python hooks/check_commit_message.py
+  entry: check-commit-message
   language: python
   stages: [commit-msg]

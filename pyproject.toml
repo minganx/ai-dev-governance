@@ -8,5 +8,8 @@ version = "0.1.0"
 description = "Shared pre-commit hooks for AI development governance"
 requires-python = ">=3.9"
 
+[project.scripts]
+check-commit-message = "hooks.check_commit_message:main"
+
 [tool.setuptools]
-py-modules = []
+packages = ["hooks"]
