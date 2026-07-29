@@ -1,0 +1,27 @@
+{
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic",
+  "include": ["src"],
+  "venvPath": ".",
+  "venv": ".venv",
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false,
+  "exclude": [
+    "**/.*",
+    "**/__pycache__",
+    "**/node_modules",
+    "**/.venv",
+    "**/venv",
+    "**/env",
+    "**/.tox",
+    "**/.nox",
+    "**/dist",
+    "**/build",
+    "**/.eggs",
+    "**/*.egg-info",
+    "**/.mypy_cache",
+    "**/.ruff_cache",
+    "**/.pytest_cache",
+    "**/__pypackages__"
+  ]
+}

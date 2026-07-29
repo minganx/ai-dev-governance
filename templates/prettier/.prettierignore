@@ -1,0 +1,8 @@
+node_modules/
+.venv/
+datas/
+logs/
+models/
+volumes/
+dist_obf/
+dist_pkg/

@@ -13,6 +13,8 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_ROOT = REPOSITORY_ROOT / "config" / "agents"
 CLAUDE_ENTRY = REPOSITORY_ROOT / "config" / "tool-entries" / "claude" / "CLAUDE.md"
+GIT_IGNORE_SOURCE = REPOSITORY_ROOT / "config" / "git" / "gitignore_global"
+RUFF_CONFIG_SOURCE = REPOSITORY_ROOT / "config" / "ruff" / "ruff.toml"
 TOOL_SKILL_DIRS = (
     Path(".agents") / "skills",
     Path(".claude") / "skills",
@@ -27,11 +29,19 @@ class ManagedFile:
     target: Path
 
 
+def _ruff_config_target(home: Path) -> Path:
+    if os.name == "nt":
+        return home / "AppData" / "Roaming" / "ruff" / "ruff.toml"
+    return home / ".config" / "ruff" / "ruff.toml"
+
+
 def managed_files(home: Path) -> list[ManagedFile]:
     files = [
         ManagedFile(CONFIG_ROOT / "AGENTS.md", home / ".config" / "agents" / "AGENTS.md"),
         ManagedFile(CONFIG_ROOT / "AGENTS.md", home / ".codex" / "AGENTS.md"),
         ManagedFile(CLAUDE_ENTRY, home / ".claude" / "CLAUDE.md"),
+        ManagedFile(GIT_IGNORE_SOURCE, home / ".gitignore_global"),
+        ManagedFile(RUFF_CONFIG_SOURCE, _ruff_config_target(home)),
     ]
     skill_sources = sorted((CONFIG_ROOT / "skills").glob("*/SKILL.md"))
     for source in skill_sources:

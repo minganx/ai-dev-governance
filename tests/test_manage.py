@@ -23,6 +23,8 @@ class ManageTest(unittest.TestCase):
                 (home / ".claude" / "CLAUDE.md").read_text(encoding="utf-8"),
                 "@~/.config/agents/AGENTS.md\n",
             )
+            self.assertTrue((home / ".gitignore_global").is_file())
+            self.assertTrue(any(item.source.name == "ruff.toml" for item in managed_files(home)))
 
     def test_refuses_to_overwrite_drift_without_force(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
