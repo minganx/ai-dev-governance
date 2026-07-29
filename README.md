@@ -10,6 +10,7 @@
 | `config/agents/skills/`         | 通用 Skill 唯一源文件          |
 | `hooks/check_commit_message.py` | Commit 正文最低机械质量检查    |
 | `.pre-commit-hooks.yaml`        | 供项目固定版本引用的 Hook 清单 |
+| `pyproject.toml`                | Python Hook 安装元数据         |
 | `tools/manage.py`               | 跨平台安装与漂移检查           |
 | `tools/install.sh`              | macOS、Linux 安装入口          |
 | `tools/install.ps1`             | Windows 安装入口               |
