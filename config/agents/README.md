@@ -23,14 +23,22 @@
 
 ## 已纳管第三方资源
 
-Pi 使用 `npm:@rahularya01/pi-cursor` 接入 Cursor 订阅。选择 Pi 时，设备管理工具执行：
+Pi 使用 `npm:@rahularya01/pi-cursor` 接入 Cursor 订阅，使用 `npm:pi-mcp-adapter` 加载标准 MCP 配置。选择 Pi 时，设备管理工具对两个 Package 执行：
 
-- 安装：`pi install npm:@rahularya01/pi-cursor`
-- 更新：`pi update npm:@rahularya01/pi-cursor`
-- 卸载：`pi remove npm:@rahularya01/pi-cursor`
+- 安装：`pi install <package>`
+- 更新：`pi update <package>`
+- 卸载：`pi remove <package>`
 - 检查：通过 `pi list` 确认 Package 已安装
 
 Claude、Codex、Cursor 的现有第三方插件和 Marketplace 不纳管。CC Switch 中的第三方和工具内置 Skill 不迁入仓库，也不由设备管理工具操作。
+
+## MCP 配置
+
+`config/mcp/servers.json` 只维护 CodeGraph、Context7、DeepWiki 的非敏感定义。安装器将对应条目合并到 Claude、Codex、Cursor 配置，并为 Pi 写入 `pi-mcp-adapter` 官方支持的 `~/.config/mcp/mcp.json`；其他 MCP 条目保持不变。
+
+Context7 API Key 不写入仓库或 MCP JSON/TOML。首次安装时提示用户先保存到密码管理器，再隐藏输入并保存到 `~/.config/agents/mcp/context7-api-key`（macOS、Linux 权限为 `0600`）。MCP 启动器在运行时通过 `CONTEXT7_API_KEY` 环境变量传给 Context7 官方 Server，不把 Key 放入命令参数。
+
+Pi 核心不内置 MCP；本仓库只在选择 Pi 时通过其官方 Package 命令维护 `pi-mcp-adapter`，不复制 Package 源码或缓存。
 
 ## CC Switch 提示词迁移
 

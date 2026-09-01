@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,10 +8,12 @@ from unittest.mock import Mock, patch
 
 from tools.manage import (
     CLAUDE_ENTRY,
-    PI_CURSOR_PACKAGE,
+    PI_PACKAGES,
     _skill_files,
+    _require_context7_key,
     check,
     install,
+    manage_mcp_servers,
     manage_third_party_packages,
     managed_files,
     uninstall,
@@ -39,12 +42,12 @@ class ManageTest(unittest.TestCase):
 
     @patch("tools.manage.subprocess.run")
     @patch("tools.manage.shutil.which", return_value="/usr/local/bin/pi")
-    def test_pi_install_manages_cursor_package(self, _: Mock, run: Mock) -> None:
+    def test_pi_install_manages_required_packages(self, _: Mock, run: Mock) -> None:
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
             run.side_effect = [
                 Mock(returncode=0, stdout="User packages:\n", stderr=""),
-                Mock(returncode=0),
+                *[Mock(returncode=0) for _ in PI_PACKAGES],
             ]
 
             self.assertEqual(
@@ -52,14 +55,17 @@ class ManageTest(unittest.TestCase):
                 0,
             )
 
-            list_call, install_call = run.call_args_list
+            list_call, *install_calls = run.call_args_list
             self.assertEqual(list_call.args[0], ["/usr/local/bin/pi", "list"])
             self.assertEqual(
-                install_call.args[0],
-                ["/usr/local/bin/pi", "install", PI_CURSOR_PACKAGE],
+                [call.args[0] for call in install_calls],
+                [
+                    ["/usr/local/bin/pi", "install", package]
+                    for package in PI_PACKAGES
+                ],
             )
             self.assertEqual(
-                install_call.kwargs["env"]["PI_CODING_AGENT_DIR"],
+                install_calls[0].kwargs["env"]["PI_CODING_AGENT_DIR"],
                 str(home / ".pi" / "agent"),
             )
 
@@ -81,6 +87,126 @@ class ManageTest(unittest.TestCase):
             )
             which.assert_not_called()
             run.assert_not_called()
+
+    @patch.dict("os.environ", {"CONTEXT7_API_KEY": "test-context7-key"}, clear=False)
+    def test_pi_mcp_sync_uses_shared_config_without_plaintext_key(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+
+            self.assertEqual(
+                manage_mcp_servers(home, "install", agents=("pi",)),
+                0,
+            )
+            config = home / ".config" / "mcp" / "mcp.json"
+            content = config.read_text(encoding="utf-8")
+            self.assertIn('"codegraph"', content)
+            self.assertIn('"context7"', content)
+            self.assertIn('"deepwiki"', content)
+            self.assertNotIn("test-context7-key", content)
+            self.assertEqual(
+                (home / ".config" / "agents" / "mcp" / "context7-api-key")
+                .read_text(encoding="utf-8")
+                .strip(),
+                "test-context7-key",
+            )
+            self.assertEqual(
+                manage_mcp_servers(home, "check", agents=("pi",)),
+                0,
+            )
+
+    @patch("tools.manage.subprocess.run")
+    @patch("tools.manage.shutil.which", return_value="/usr/local/bin/codex")
+    @patch.dict("os.environ", {"CONTEXT7_API_KEY": "test-context7-key"}, clear=False)
+    def test_codex_mcp_sync_uses_official_cli(self, _: Mock, run: Mock) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            run.side_effect = [
+                Mock(returncode=0, stdout="[]", stderr=""),
+                Mock(returncode=0),
+                Mock(returncode=0),
+                Mock(returncode=0),
+            ]
+
+            self.assertEqual(
+                manage_mcp_servers(
+                    Path(directory),
+                    "install",
+                    agents=("codex",),
+                ),
+                0,
+            )
+            commands = [call.args[0] for call in run.call_args_list]
+            self.assertEqual(
+                commands[0],
+                ["/usr/local/bin/codex", "mcp", "list", "--json"],
+            )
+            self.assertEqual(
+                [command[3] for command in commands[1:]],
+                ["codegraph", "context7", "deepwiki"],
+            )
+
+    @patch.dict("os.environ", {"CONTEXT7_API_KEY": "test-context7-key"}, clear=False)
+    def test_mcp_sync_preserves_unmanaged_cursor_servers_and_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            config = home / ".cursor" / "mcp.json"
+            config.parent.mkdir(parents=True)
+            config.write_text(
+                json.dumps(
+                    {
+                        "mcpServers": {
+                            "local": {"command": "local-mcp"},
+                            "context7": {"command": "custom-context7"},
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                manage_mcp_servers(home, "update", agents=("cursor",)),
+                2,
+            )
+            servers = json.loads(config.read_text(encoding="utf-8"))["mcpServers"]
+            self.assertEqual(servers["local"]["command"], "local-mcp")
+            self.assertEqual(servers["context7"]["command"], "custom-context7")
+            self.assertIn("codegraph", servers)
+            self.assertIn("deepwiki", servers)
+
+            self.assertEqual(
+                manage_mcp_servers(home, "uninstall", agents=("cursor",)),
+                2,
+            )
+            servers = json.loads(config.read_text(encoding="utf-8"))["mcpServers"]
+            self.assertIn("codegraph", servers)
+            self.assertIn("deepwiki", servers)
+
+            self.assertEqual(
+                manage_mcp_servers(
+                    home,
+                    "update",
+                    agents=("cursor",),
+                    force=True,
+                ),
+                0,
+            )
+            servers = json.loads(config.read_text(encoding="utf-8"))["mcpServers"]
+            self.assertEqual(servers["local"]["command"], "local-mcp")
+            self.assertNotEqual(servers["context7"]["command"], "custom-context7")
+
+    @patch.dict("os.environ", {}, clear=True)
+    @patch("tools.manage.getpass.getpass", return_value="pasted-key")
+    @patch("tools.manage.sys.stdin.isatty", return_value=True)
+    def test_context7_key_prompts_once_and_saves_locally(
+        self,
+        _: Mock,
+        getpass_mock: Mock,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+
+            self.assertEqual(_require_context7_key(home), "pasted-key")
+            self.assertEqual(_require_context7_key(home), "pasted-key")
+            getpass_mock.assert_called_once()
 
     def test_install_and_check(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

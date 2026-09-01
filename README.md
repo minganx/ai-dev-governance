@@ -9,12 +9,12 @@
 ## 管理范围
 
 - 全局 AI 开发规则和通用 Skill。
-- Claude Code、Codex、Cursor、Pi 的规则入口或 Skill 目录适配。
+- Claude Code、Codex、Cursor、Pi 的规则入口、Skill 和 MCP 配置同步。
 - Git 全局忽略文件和 Ruff 用户级默认配置。
 - 项目级 Agent、CodeGraph、Git、`pyproject.toml`、Pyright、Prettier、pre-commit 等个人配置模板。
 - Commit 正文最低质量检查器及 pre-commit Hook 声明。
 - 跨平台安装、增量更新、漂移检查和卸载工具。
-- 选择 Pi 时，通过 Pi CLI 管理 `npm:@rahularya01/pi-cursor`，用于接入 Cursor 订阅。
+- 选择 Pi 时，通过 Pi CLI 管理 `npm:@rahularya01/pi-cursor` 和 `npm:pi-mcp-adapter`。
 
 设备管理工具只处理本仓库明确映射的自维护文件。设备上已有的第三方 Skill、插件、工具配置和凭据不属于复制范围，不会因更新或卸载被清理；第三方资源通过各工具的安装和更新命令维护。
 
@@ -30,6 +30,8 @@
 | `config/tool-entries/`          | Agent 专属规则薄入口           |
 | `config/git/gitignore_global`   | Git 全局忽略规则               |
 | `config/ruff/ruff.toml`         | Ruff 用户级默认配置            |
+| `config/mcp/servers.json`       | 跨 Agent MCP 非敏感配置源      |
+| `config/mcp/context7_mcp.py`    | Context7 本地密钥启动器        |
 | `dev-configs/agents/`           | 项目级 Agent 与 CodeGraph 模板 |
 | `dev-configs/git/`              | 项目 Git 配置模板              |
 | `dev-configs/python/`           | Python 项目配置模板            |
@@ -52,7 +54,12 @@
 | `~/.codex/AGENTS.md`、`~/.codex/skills/`      | Codex                   |
 | `~/.cursor/skills/`                           | Cursor                  |
 | `~/.pi/agent/AGENTS.md`、`~/.agents/skills/`  | Pi                      |
+| `~/.claude.json`、`~/.codex/config.toml`      | Claude、Codex MCP       |
+| `~/.cursor/mcp.json`                          | Cursor MCP              |
+| `~/.config/mcp/mcp.json`                      | Pi 共享 MCP             |
+| `~/.config/agents/mcp/`                       | MCP 启动器及本地密钥    |
 | `npm:@rahularya01/pi-cursor`                  | Pi 的 Cursor 订阅支持   |
+| `npm:pi-mcp-adapter`                          | Pi 的 MCP 支持          |
 | `~/.gitignore_global`                         | Git 全局忽略            |
 | `~/.config/ruff/ruff.toml`                    | macOS、Linux Ruff 默认值 |
 | `%APPDATA%\ruff\ruff.toml`                    | Windows Ruff 默认值      |
@@ -81,7 +88,9 @@ git config --global core.excludesFile "$HOME/.gitignore_global"
 py -3 .\tools\manage.py check
 ```
 
-默认安装全部 Agent 支持。使用可重复的 `--agent` 仅安装指定 Agent；可选值为 `claude`、`codex`、`cursor`、`pi`。选择 Pi 前必须已安装可执行的 Pi CLI，安装器会继续通过 Pi 官方命令安装 `pi-cursor` Package：
+默认安装全部 Agent 支持。使用可重复的 `--agent` 仅安装指定 Agent；可选值为 `claude`、`codex`、`cursor`、`pi`。首次配置 MCP 时，安装器会提示先将 Context7 API Key 保存到密码管理器，再以不回显方式粘贴。Key 只写入设备文件 `~/.config/agents/mcp/context7-api-key`（macOS、Linux 权限为 `0600`），不会进入仓库或 Agent MCP 配置。
+
+选择 Pi 前必须已安装可执行的 Pi CLI，安装器会继续通过 Pi 官方命令安装 `pi-cursor` 和 `pi-mcp-adapter` Package：
 
 ```bash
 ./tools/install.sh --agent pi
@@ -120,7 +129,9 @@ py -3 .\tools\manage.py check
 ./tools/update.sh --force
 ```
 
-选择 Pi 时，更新器同时执行 `pi update npm:@rahularya01/pi-cursor`，检查器通过 `pi list` 验证 Package。更新和检查同样支持限定 Agent：
+MCP 同步管理 CodeGraph、Context7 和 DeepWiki，并保留各工具中其他 MCP。Context7 通过本地启动器读取设备 Key，不把 Key 写入进程参数。非交互环境可临时提供 `CONTEXT7_API_KEY`；安装器只保存其值，不输出内容。
+
+选择 Pi 时，更新器同时更新 `pi-cursor` 和 `pi-mcp-adapter`，检查器通过 `pi list` 验证 Package。更新和检查同样支持限定 Agent：
 
 ```bash
 ./tools/update.sh --agent pi
@@ -148,4 +159,4 @@ Windows：
 ./tools/uninstall.sh --agent claude --agent codex
 ```
 
-卸载器只删除本仓库映射的文件并清理空目录，不处理设备上的额外配置。卸载 Pi 支持时同时执行 `pi remove npm:@rahularya01/pi-cursor`。受管文件存在本地差异时默认拒绝删除；确认无需保留后使用 `--force`。不指定 `--agent` 时会同时删除共享配置。
+卸载器只删除本仓库映射的文件和 MCP Server 条目并清理空目录，不处理设备上的额外配置。卸载 Pi 支持时同时移除 `pi-cursor` 和 `pi-mcp-adapter`。Context7 API Key 默认保留，便于重新安装；需要彻底清理时手工删除 `~/.config/agents/mcp/context7-api-key`。受管文件或 MCP 条目存在本地差异时默认拒绝删除；确认无需保留后使用 `--force`。不指定 `--agent` 时会同时删除共享配置。
