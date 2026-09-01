@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""跨平台安装、检查并卸载全局 AI 开发规则和通用 Skill。"""
+"""跨平台安装、更新、检查并卸载全局 AI 开发规则和通用 Skill。"""
 
 from __future__ import annotations
 
 import argparse
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -17,6 +19,7 @@ CLAUDE_ENTRY = REPOSITORY_ROOT / "config" / "tool-entries" / "claude" / "CLAUDE.
 GIT_IGNORE_SOURCE = REPOSITORY_ROOT / "config" / "git" / "gitignore_global"
 RUFF_CONFIG_SOURCE = REPOSITORY_ROOT / "config" / "ruff" / "ruff.toml"
 SUPPORTED_AGENTS = ("claude", "codex", "cursor", "pi")
+PI_CURSOR_PACKAGE = "npm:@rahularya01/pi-cursor"
 AGENT_SKILL_DIRS = {
     "claude": Path(".claude") / "skills",
     "codex": Path(".codex") / "skills",
@@ -35,6 +38,15 @@ def _ruff_config_target(home: Path) -> Path:
     if os.name == "nt":
         return home / "AppData" / "Roaming" / "ruff" / "ruff.toml"
     return home / ".config" / "ruff" / "ruff.toml"
+
+
+def _skill_files(skills_root: Path) -> list[tuple[str, Path, Path]]:
+    files: list[tuple[str, Path, Path]] = []
+    for skill_entry in sorted(skills_root.glob("*/SKILL.md")):
+        skill_root = skill_entry.parent
+        for source in sorted(path for path in skill_root.rglob("*") if path.is_file()):
+            files.append((skill_root.name, source, source.relative_to(skill_root)))
+    return files
 
 
 def managed_files(
@@ -68,19 +80,24 @@ def managed_files(
             ManagedFile(CONFIG_ROOT / "AGENTS.md", home / ".pi" / "agent" / "AGENTS.md")
         )
 
-    skill_sources = sorted((CONFIG_ROOT / "skills").glob("*/SKILL.md"))
-    for source in skill_sources:
-        skill_name = source.parent.name
+    for skill_name, source, relative_path in _skill_files(CONFIG_ROOT / "skills"):
         if include_shared:
             files.append(
                 ManagedFile(
                     source,
-                    home / ".config" / "agents" / "skills" / skill_name / "SKILL.md",
+                    home
+                    / ".config"
+                    / "agents"
+                    / "skills"
+                    / skill_name
+                    / relative_path,
                 )
             )
         for agent in selected_agents:
             skill_dir = AGENT_SKILL_DIRS[agent]
-            files.append(ManagedFile(source, home / skill_dir / skill_name / "SKILL.md"))
+            files.append(
+                ManagedFile(source, home / skill_dir / skill_name / relative_path)
+            )
     return files
 
 
@@ -124,6 +141,33 @@ def install(
     return 0
 
 
+def update(
+    home: Path,
+    force: bool,
+    agents: Optional[tuple[str, ...]] = None,
+) -> int:
+    conflicts: list[Path] = []
+    changed = 0
+    for item in managed_files(home, agents):
+        if _same_content(item.source, item.target):
+            continue
+        if item.target.exists() and not force:
+            conflicts.append(item.target)
+            continue
+        _atomic_copy(item.source, item.target)
+        changed += 1
+        print(f"updated {item.target}")
+
+    print(f"完成：更新 {changed} 个文件。")
+    if not conflicts:
+        return 0
+
+    print("以下文件存在本地差异，已保留。确认后使用 update --force：", file=sys.stderr)
+    for target in conflicts:
+        print(f"- {target}", file=sys.stderr)
+    return 2
+
+
 def check(home: Path, agents: Optional[tuple[str, ...]] = None) -> int:
     drifted = [
         item.target
@@ -138,6 +182,58 @@ def check(home: Path, agents: Optional[tuple[str, ...]] = None) -> int:
     for target in drifted:
         print(f"- {target}", file=sys.stderr)
     return 1
+
+
+def manage_third_party_packages(
+    home: Path,
+    command: str,
+    agents: Optional[tuple[str, ...]] = None,
+) -> int:
+    selected_agents = agents or SUPPORTED_AGENTS
+    if "pi" not in selected_agents:
+        return 0
+
+    pi = shutil.which("pi")
+    if pi is None:
+        print("未找到 Pi CLI，无法管理 pi-cursor Package。", file=sys.stderr)
+        return 1
+
+    environment = os.environ.copy()
+    environment["PI_CODING_AGENT_DIR"] = str(home / ".pi" / "agent")
+    listed = subprocess.run(
+        [pi, "list"],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if listed.returncode != 0:
+        print(listed.stderr, file=sys.stderr, end="")
+        return listed.returncode
+
+    installed = PI_CURSOR_PACKAGE in listed.stdout
+    if command == "check":
+        if installed:
+            return 0
+        print(f"缺少 Pi Package：{PI_CURSOR_PACKAGE}", file=sys.stderr)
+        return 1
+    if command == "install" and installed:
+        return 0
+    if command == "update" and not installed:
+        command = "install"
+    if command == "uninstall":
+        if not installed:
+            return 0
+        package_command = "remove"
+    else:
+        package_command = command
+
+    result = subprocess.run(
+        [pi, package_command, PI_CURSOR_PACKAGE],
+        env=environment,
+        check=False,
+    )
+    return result.returncode
 
 
 def _remove_empty_parents(directory: Path, home: Path) -> None:
@@ -181,7 +277,7 @@ def uninstall(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("install", "check", "uninstall"))
+    parser.add_argument("command", choices=("install", "update", "check", "uninstall"))
     parser.add_argument("--force", action="store_true", help="覆盖或删除存在本地修改的受管文件")
     parser.add_argument(
         "--agent",
@@ -199,12 +295,24 @@ def main() -> int:
     home = args.home.expanduser().resolve()
     agents = tuple(dict.fromkeys(args.agents)) if args.agents else None
     if args.command == "install":
-        return install(home, args.force, agents)
+        result = install(home, args.force, agents)
+        if result != 0:
+            return result
+        return manage_third_party_packages(home, "install", agents)
+    if args.command == "update":
+        result = update(home, args.force, agents)
+        package_result = manage_third_party_packages(home, "update", agents)
+        return result or package_result
     if args.command == "uninstall":
-        return uninstall(home, args.force, agents)
+        result = uninstall(home, args.force, agents)
+        if result != 0:
+            return result
+        return manage_third_party_packages(home, "uninstall", agents)
     if args.force:
         raise SystemExit("check 不支持 --force")
-    return check(home, agents)
+    result = check(home, agents)
+    package_result = manage_third_party_packages(home, "check", agents)
+    return result or package_result
 
 
 if __name__ == "__main__":

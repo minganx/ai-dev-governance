@@ -1,0 +1,57 @@
+# 复制到项目根目录后，按项目目录和工具范围调整 files、targets 与命令。
+repos:
+  - repo: local
+    hooks:
+      - id: prettier-markdown
+        name: Prettier Markdown
+        entry: npx --no-install prettier --write
+        language: system
+        types: [markdown]
+        files: \.md$
+
+      # 统一通过 uv 使用项目锁定的工具版本，避免与远程 Hook 重复维护版本号。
+      - id: ruff
+        name: Ruff
+        entry: uv run ruff check --fix --exit-non-zero-on-fix
+        language: system
+        types_or: [python, pyi]
+
+      - id: ruff-format
+        name: Ruff Format
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi]
+
+      - id: pyright
+        name: Pyright
+        entry: uv run pyright
+        language: system
+        pass_filenames: false
+        files: ^(src/|pyproject\.toml$|pyrightconfig\.json$)
+
+      - id: bandit
+        name: Bandit
+        entry: uv run bandit -c pyproject.toml -r src
+        language: system
+        pass_filenames: false
+        files: ^(src/|pyproject\.toml$)
+
+      - id: deptry
+        name: deptry
+        entry: uv run deptry .
+        language: system
+        pass_filenames: false
+        files: ^(src/|scripts/|migrations/|pyproject\.toml$|uv\.lock$)
+
+      - id: commitizen
+        name: Commitizen
+        entry: uv run cz check --commit-msg-file
+        language: system
+        stages: [commit-msg]
+
+  # 共享 Commit 正文检查器必须固定为已推送的完整 Commit SHA。
+  # 确认版本后取消注释并替换 rev。
+  # - repo: https://github.com/minganx/ai-dev-governance
+  #   rev: <完整 Commit SHA>
+  #   hooks:
+  #     - id: check-commit-message

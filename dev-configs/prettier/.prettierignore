@@ -1,0 +1,13 @@
+# 依赖与虚拟环境
+node_modules/
+.venv/
+
+# 运行数据、日志和模型文件
+datas/
+logs/
+models/
+volumes/
+
+# 构建与交付产物
+dist_obf/
+dist_pkg/

@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "engines": {
+    "node": ">=14"
+  },
+  "devDependencies": {
+    "prettier": "3.9.5"
+  },
+  "scripts": {
+    "check:markdown": "prettier --check \"**/*.md\"",
+    "format:markdown": "prettier --write \"**/*.md\""
+  }
+}

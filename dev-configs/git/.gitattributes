@@ -1,0 +1,27 @@
+# 统一跨平台文本换行符，避免 Windows、WSL、macOS 产生整文件差异。
+* text=auto eol=lf
+
+# 常用源码和配置文件。
+*.py text eol=lf
+*.pyi text eol=lf
+*.j2 text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.sh text eol=lf
+*.sql text eol=lf
+
+# 二进制资源不做换行符规范化。
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.docx binary
+*.xlsx binary
+*.pptx binary

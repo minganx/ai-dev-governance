@@ -1,0 +1,111 @@
+# Python 项目个人配置模板。
+# 复制到项目根目录后，必须修改项目名、Python 版本、源码包名和依赖。
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "replace-me"
+version = "0.1.0"
+description = "Replace with the project description"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+# 使用 uv 管理开发依赖；按项目需要删除不使用的工具。
+[dependency-groups]
+dev = [
+    "bandit[toml]>=1.9.4",
+    "commitizen>=4.13.9",
+    "deptry>=0.25.1",
+    "pre-commit>=4.4.0",
+    "pyright>=1.1.411",
+    "ruff>=0.15.11",
+]
+
+# 个人默认使用清华 PyPI 镜像；项目有自己的源策略时替换或删除。
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
+# 默认采用 src 布局。
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py311" # 与 project.requires-python 保持一致。
+line-length = 120
+src = ["src"]
+exclude = [
+    ".venv",
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    "*.egg-info",
+    "logs",
+    "datas",
+]
+
+[tool.ruff.lint]
+fixable = ["ALL"]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # import 排序
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ARG", # 未使用参数
+    "SIM", # 简化表达式
+]
+ignore = [
+    "E501",   # 行宽由 formatter 处理。
+    "B008",   # FastAPI 等框架常在默认参数中调用函数。
+    "B904",   # 是否保留异常链由项目业务决定。
+    "SIM108", # 不强制将可读的 if/else 改为三元表达式。
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.ruff.lint.isort]
+# 替换为项目实际顶层包名，可配置多个。
+known-first-party = ["replace_me"]
+from-first = false
+length-sort = true
+length-sort-straight = true
+lines-between-types = 1
+combine-as-imports = true
+
+[tool.deptry]
+# 替换为项目实际顶层包名。
+known_first_party = ["replace_me"]
+
+[tool.bandit]
+targets = ["src"]
+exclude_dirs = [".venv"]
+# 以下是个人常用豁免；复制后必须按项目安全边界逐项复核。
+skips = [
+    "B101", # assert
+    "B105", # 配置字段名可能被识别为硬编码密码
+    "B106", # 初始化参数可能被识别为硬编码密码
+    "B110", # try/except/pass
+    "B324", # 非安全用途哈希
+    "B404", # subprocess import
+    "B603", # subprocess 调用
+    "B607", # subprocess 部分路径
+    "B608", # 项目确认安全的动态 SQL
+]
+confidence = ["MEDIUM", "HIGH"]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0" # 与 project.version 保持一致。
+tag_format = "v$version"
+version_files = ["pyproject.toml:version"]

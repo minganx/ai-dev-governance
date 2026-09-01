@@ -7,9 +7,12 @@
 | 配置                        | 位置                                  | 作用                                           |
 | --------------------------- | ------------------------------------- | ---------------------------------------------- |
 | Git 全局忽略                | `config/git/gitignore_global`         | 忽略操作系统、编辑器和通用缓存等本机噪音       |
+| Git 项目模板                | `dev-configs/git/`                    | 手工复制并调整项目忽略和跨平台属性             |
+| 项目级 Agent 模板           | `dev-configs/agents/`                 | 手工复制项目规则入口和 CodeGraph 约定          |
 | Ruff 用户级默认配置         | `config/ruff/ruff.toml`               | 为没有 Ruff 配置的 Python 项目提供默认检查规则 |
-| Pyright 项目模板            | `templates/python/pyrightconfig.json` | 新项目复制后按源码目录、Python 版本和范围调整  |
-| Prettier 项目模板           | `templates/prettier/`                 | 新项目复制并固定项目级 Markdown 格式           |
+| Python 项目模板             | `dev-configs/python/`                  | 手工复制并调整 pyproject、Pyright 和项目范围   |
+| Prettier 项目模板           | `dev-configs/prettier/`                | 手工复制并固定项目级 Markdown 格式             |
+| pre-commit 项目模板         | `dev-configs/pre-commit/`              | 手工复制并按项目质量工具调整                   |
 | AI 全局规则与通用 Skill     | `config/agents/`                      | 跨项目、跨 AI 工具共享规则                     |
 | 项目规则、项目 Skill 与门禁 | 各项目仓库                            | 项目事实、工程命令、项目差异和 CI/提交前检查   |
 | PyCharm、VS Code 个人设置   | IDE 用户配置                          | 提升编辑体验，不作为仓库质量结果的权威来源     |
@@ -63,36 +66,31 @@ Prettier 属于项目级工具。新项目执行：
 npm install --save-dev --save-exact prettier
 ```
 
-然后复制 `templates/prettier/` 中的配置，并在 `package.json` 中提供：
-
-```json
-{
-  "scripts": {
-    "format:markdown": "prettier --write \"**/*.md\"",
-    "check:markdown": "prettier --check \"**/*.md\""
-  }
-}
-```
+然后按需复制 `dev-configs/prettier/` 中的 `.prettierrc.json`、`.prettierignore` 和 `package.json`。模板已提供 Markdown 检查及格式化命令。
 
 提交 `package.json`、锁文件和 Prettier 配置，不提交 `node_modules/`。编辑器应使用项目本地 Prettier，并启用“存在项目配置时才格式化”。
 
 ## pre-commit
 
-项目按自身技术栈维护 `.pre-commit-config.yaml`。Markdown 项目可使用：
+项目按自身技术栈维护 `.pre-commit-config.yaml`。`dev-configs/pre-commit/` 提供通过项目本地 `uv` 和 npm 工具执行 Prettier、Ruff、Pyright、Bandit、deptry、Commitizen 的个人模板；复制后必须删除不使用的 Hook 并调整路径范围。
+
+共享 Commit 正文检查器按治理仓库不可变 Commit SHA 引用：
 
 ```yaml
 repos:
-  - repo: local
+  - repo: https://github.com/minganx/ai-dev-governance
+    rev: <已发布 Commit SHA>
     hooks:
-      - id: prettier-markdown
-        name: Prettier Markdown
-        entry: npx --no-install prettier --write
-        language: system
-        types: [markdown]
-        files: \.md$
+      - id: check-commit-message
 ```
 
-共享 Commit 正文检查器按治理仓库不可变 Commit SHA 引用，配置见根目录 [README](../README.md)。
+`rev` 必须使用已推送的完整 Commit SHA。配置后执行：
+
+```bash
+pre-commit install --hook-type pre-commit --hook-type commit-msg
+```
+
+使用 `uv` 管理开发工具时执行 `uv run pre-commit install --hook-type pre-commit --hook-type commit-msg`。
 
 ## IDE
 

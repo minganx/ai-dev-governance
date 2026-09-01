@@ -3,11 +3,85 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
-from tools.manage import check, install, managed_files, uninstall
+from tools.manage import (
+    CLAUDE_ENTRY,
+    PI_CURSOR_PACKAGE,
+    _skill_files,
+    check,
+    install,
+    manage_third_party_packages,
+    managed_files,
+    uninstall,
+    update,
+)
 
 
 class ManageTest(unittest.TestCase):
+    def test_skill_files_include_supporting_resources(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            skills_root = Path(directory)
+            skill_root = skills_root / "notes"
+            (skill_root / "scripts").mkdir(parents=True)
+            (skill_root / "SKILL.md").write_text("skill", encoding="utf-8")
+            (skill_root / "scripts" / "export.py").write_text("script", encoding="utf-8")
+            ignored = skills_root / "not-a-skill"
+            ignored.mkdir()
+            (ignored / "README.md").write_text("ignored", encoding="utf-8")
+
+            files = _skill_files(skills_root)
+
+            self.assertEqual(
+                [(name, relative.as_posix()) for name, _, relative in files],
+                [("notes", "SKILL.md"), ("notes", "scripts/export.py")],
+            )
+
+    @patch("tools.manage.subprocess.run")
+    @patch("tools.manage.shutil.which", return_value="/usr/local/bin/pi")
+    def test_pi_install_manages_cursor_package(self, _: Mock, run: Mock) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            run.side_effect = [
+                Mock(returncode=0, stdout="User packages:\n", stderr=""),
+                Mock(returncode=0),
+            ]
+
+            self.assertEqual(
+                manage_third_party_packages(home, "install", agents=("pi",)),
+                0,
+            )
+
+            list_call, install_call = run.call_args_list
+            self.assertEqual(list_call.args[0], ["/usr/local/bin/pi", "list"])
+            self.assertEqual(
+                install_call.args[0],
+                ["/usr/local/bin/pi", "install", PI_CURSOR_PACKAGE],
+            )
+            self.assertEqual(
+                install_call.kwargs["env"]["PI_CODING_AGENT_DIR"],
+                str(home / ".pi" / "agent"),
+            )
+
+    @patch("tools.manage.subprocess.run")
+    @patch("tools.manage.shutil.which")
+    def test_non_pi_agent_does_not_manage_pi_packages(
+        self,
+        which: Mock,
+        run: Mock,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(
+                manage_third_party_packages(
+                    Path(directory),
+                    "install",
+                    agents=("claude",),
+                ),
+                0,
+            )
+            which.assert_not_called()
+            run.assert_not_called()
+
     def test_install_and_check(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
@@ -28,7 +102,7 @@ class ManageTest(unittest.TestCase):
             )
             self.assertEqual(
                 (home / ".claude" / "CLAUDE.md").read_text(encoding="utf-8"),
-                "@~/.config/agents/AGENTS.md\n",
+                CLAUDE_ENTRY.read_text(encoding="utf-8"),
             )
             self.assertTrue((home / ".gitignore_global").is_file())
             self.assertTrue(any(item.source.name == "ruff.toml" for item in managed_files(home)))
@@ -47,6 +121,25 @@ class ManageTest(unittest.TestCase):
             self.assertFalse((home / ".claude").exists())
             self.assertFalse((home / ".codex").exists())
             self.assertFalse((home / ".cursor").exists())
+
+    def test_update_adds_missing_files_and_preserves_local_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+
+            self.assertEqual(install(home, force=False, agents=("pi",)), 0)
+            local_file = home / ".pi" / "agent" / "AGENTS.md"
+            missing_file = (
+                home / ".agents" / "skills" / "review-code" / "SKILL.md"
+            )
+            local_file.write_text("local change", encoding="utf-8")
+            missing_file.unlink()
+
+            self.assertEqual(update(home, force=False, agents=("pi",)), 2)
+            self.assertEqual(local_file.read_text(encoding="utf-8"), "local change")
+            self.assertTrue(missing_file.is_file())
+
+            self.assertEqual(update(home, force=True, agents=("pi",)), 0)
+            self.assertEqual(check(home, agents=("pi",)), 0)
 
     def test_uninstalls_selected_agent_without_removing_shared_files(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -1,6 +1,8 @@
 {
+  // 与 pyproject.toml 的 requires-python 和 Ruff target-version 保持一致。
   "pythonVersion": "3.11",
   "typeCheckingMode": "basic",
+  // 默认采用 src 布局；非 src 项目需调整。
   "include": ["src"],
   "venvPath": ".",
   "venv": ".venv",
@@ -21,7 +23,8 @@
     "**/*.egg-info",
     "**/.mypy_cache",
     "**/.ruff_cache",
-    "**/.pytest_cache",
-    "**/__pypackages__"
+    "**/__pypackages__",
+    "logs",
+    "datas"
   ]
 }
