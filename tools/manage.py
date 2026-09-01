@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""跨平台安装并检查全局 AI 开发规则和通用 Skill。"""
+"""跨平台安装、检查并卸载全局 AI 开发规则和通用 Skill。"""
 
 from __future__ import annotations
 
@@ -9,18 +9,20 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_ROOT = REPOSITORY_ROOT / "config" / "agents"
 CLAUDE_ENTRY = REPOSITORY_ROOT / "config" / "tool-entries" / "claude" / "CLAUDE.md"
 GIT_IGNORE_SOURCE = REPOSITORY_ROOT / "config" / "git" / "gitignore_global"
 RUFF_CONFIG_SOURCE = REPOSITORY_ROOT / "config" / "ruff" / "ruff.toml"
-TOOL_SKILL_DIRS = (
-    Path(".agents") / "skills",
-    Path(".claude") / "skills",
-    Path(".codex") / "skills",
-    Path(".cursor") / "skills",
-)
+SUPPORTED_AGENTS = ("claude", "codex", "cursor", "pi")
+AGENT_SKILL_DIRS = {
+    "claude": Path(".claude") / "skills",
+    "codex": Path(".codex") / "skills",
+    "cursor": Path(".cursor") / "skills",
+    "pi": Path(".agents") / "skills",
+}
 
 
 @dataclass(frozen=True)
@@ -35,25 +37,50 @@ def _ruff_config_target(home: Path) -> Path:
     return home / ".config" / "ruff" / "ruff.toml"
 
 
-def managed_files(home: Path) -> list[ManagedFile]:
-    files = [
-        ManagedFile(CONFIG_ROOT / "AGENTS.md", home / ".config" / "agents" / "AGENTS.md"),
-        ManagedFile(CONFIG_ROOT / "AGENTS.md", home / ".codex" / "AGENTS.md"),
-        ManagedFile(CLAUDE_ENTRY, home / ".claude" / "CLAUDE.md"),
-        ManagedFile(GIT_IGNORE_SOURCE, home / ".gitignore_global"),
-        ManagedFile(RUFF_CONFIG_SOURCE, _ruff_config_target(home)),
-    ]
+def managed_files(
+    home: Path,
+    agents: Optional[tuple[str, ...]] = None,
+    *,
+    include_shared: bool = True,
+) -> list[ManagedFile]:
+    selected_agents = agents or SUPPORTED_AGENTS
+    files: list[ManagedFile] = []
+    if include_shared:
+        files.extend(
+            [
+                ManagedFile(
+                    CONFIG_ROOT / "AGENTS.md",
+                    home / ".config" / "agents" / "AGENTS.md",
+                ),
+                ManagedFile(GIT_IGNORE_SOURCE, home / ".gitignore_global"),
+                ManagedFile(RUFF_CONFIG_SOURCE, _ruff_config_target(home)),
+            ]
+        )
+
+    if "claude" in selected_agents:
+        files.append(ManagedFile(CLAUDE_ENTRY, home / ".claude" / "CLAUDE.md"))
+    if "codex" in selected_agents:
+        files.append(
+            ManagedFile(CONFIG_ROOT / "AGENTS.md", home / ".codex" / "AGENTS.md")
+        )
+    if "pi" in selected_agents:
+        files.append(
+            ManagedFile(CONFIG_ROOT / "AGENTS.md", home / ".pi" / "agent" / "AGENTS.md")
+        )
+
     skill_sources = sorted((CONFIG_ROOT / "skills").glob("*/SKILL.md"))
     for source in skill_sources:
         skill_name = source.parent.name
-        files.append(
-            ManagedFile(
-                source,
-                home / ".config" / "agents" / "skills" / skill_name / "SKILL.md",
+        if include_shared:
+            files.append(
+                ManagedFile(
+                    source,
+                    home / ".config" / "agents" / "skills" / skill_name / "SKILL.md",
+                )
             )
-        )
-        for tool_dir in TOOL_SKILL_DIRS:
-            files.append(ManagedFile(source, home / tool_dir / skill_name / "SKILL.md"))
+        for agent in selected_agents:
+            skill_dir = AGENT_SKILL_DIRS[agent]
+            files.append(ManagedFile(source, home / skill_dir / skill_name / "SKILL.md"))
     return files
 
 
@@ -69,10 +96,15 @@ def _atomic_copy(source: Path, target: Path) -> None:
     os.replace(temporary, target)
 
 
-def install(home: Path, force: bool) -> int:
+def install(
+    home: Path,
+    force: bool,
+    agents: Optional[tuple[str, ...]] = None,
+) -> int:
+    files = managed_files(home, agents)
     conflicts = [
         item.target
-        for item in managed_files(home)
+        for item in files
         if item.target.exists() and not _same_content(item.source, item.target)
     ]
     if conflicts and not force:
@@ -82,7 +114,7 @@ def install(home: Path, force: bool) -> int:
         return 2
 
     changed = 0
-    for item in managed_files(home):
+    for item in files:
         if _same_content(item.source, item.target):
             continue
         _atomic_copy(item.source, item.target)
@@ -92,8 +124,12 @@ def install(home: Path, force: bool) -> int:
     return 0
 
 
-def check(home: Path) -> int:
-    drifted = [item.target for item in managed_files(home) if not _same_content(item.source, item.target)]
+def check(home: Path, agents: Optional[tuple[str, ...]] = None) -> int:
+    drifted = [
+        item.target
+        for item in managed_files(home, agents)
+        if not _same_content(item.source, item.target)
+    ]
     if not drifted:
         print("全局规则和 Skill 与治理仓库一致。")
         return 0
@@ -104,10 +140,56 @@ def check(home: Path) -> int:
     return 1
 
 
+def _remove_empty_parents(directory: Path, home: Path) -> None:
+    while directory != home:
+        try:
+            directory.rmdir()
+        except OSError:
+            return
+        directory = directory.parent
+
+
+def uninstall(
+    home: Path,
+    force: bool,
+    agents: Optional[tuple[str, ...]] = None,
+) -> int:
+    include_shared = agents is None
+    files = managed_files(home, agents, include_shared=include_shared)
+    conflicts = [
+        item.target
+        for item in files
+        if item.target.exists() and not _same_content(item.source, item.target)
+    ]
+    if conflicts and not force:
+        print("存在本地修改，未删除。确认后使用 uninstall --force：", file=sys.stderr)
+        for target in conflicts:
+            print(f"- {target}", file=sys.stderr)
+        return 2
+
+    removed = 0
+    for item in files:
+        if not item.target.is_file():
+            continue
+        item.target.unlink()
+        _remove_empty_parents(item.target.parent, home)
+        removed += 1
+        print(f"removed {item.target}")
+    print(f"完成：删除 {removed} 个文件。")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("install", "check"))
-    parser.add_argument("--force", action="store_true", help="覆盖治理仓库管理的同名文件")
+    parser.add_argument("command", choices=("install", "check", "uninstall"))
+    parser.add_argument("--force", action="store_true", help="覆盖或删除存在本地修改的受管文件")
+    parser.add_argument(
+        "--agent",
+        action="append",
+        choices=SUPPORTED_AGENTS,
+        dest="agents",
+        help="只管理指定 Agent，可重复使用；默认管理全部 Agent",
+    )
     parser.add_argument("--home", type=Path, default=Path.home(), help=argparse.SUPPRESS)
     return parser
 
@@ -115,11 +197,14 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
     home = args.home.expanduser().resolve()
+    agents = tuple(dict.fromkeys(args.agents)) if args.agents else None
     if args.command == "install":
-        return install(home, args.force)
+        return install(home, args.force, agents)
+    if args.command == "uninstall":
+        return uninstall(home, args.force, agents)
     if args.force:
         raise SystemExit("check 不支持 --force")
-    return check(home)
+    return check(home, agents)
 
 
 if __name__ == "__main__":

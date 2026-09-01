@@ -1,6 +1,6 @@
 # AI 开发治理
 
-本仓库统一维护跨项目、跨 AI 工具的开发规则、通用 Skill、用户级工具默认配置和 Commit 正文检查器，支持 macOS、Windows、Linux。
+本仓库统一维护跨项目、跨 AI 工具的开发规则、通用 Skill、用户级工具默认配置和 Commit 正文检查器，兼容 Claude Code、Codex、Cursor 和 Pi，支持 macOS、Windows、Linux。
 
 ## 管理范围
 
@@ -14,9 +14,11 @@
 | `docs/toolchain.md`             | 开发工具链配置边界和接入规范   |
 | `hooks/check_commit_message.py` | Commit 正文最低机械质量检查    |
 | `.pre-commit-hooks.yaml`        | 供项目固定版本引用的 Hook 清单 |
-| `tools/manage.py`               | 跨平台安装与漂移检查           |
+| `tools/manage.py`               | 跨平台安装、漂移检查与卸载     |
 | `tools/install.sh`              | macOS、Linux 安装入口          |
 | `tools/install.ps1`             | Windows 安装入口               |
+| `tools/uninstall.sh`            | macOS、Linux 卸载入口          |
+| `tools/uninstall.ps1`           | Windows 卸载入口               |
 
 ## 首次部署
 
@@ -40,6 +42,22 @@ git config --global core.excludesFile "$HOME/.gitignore_global"
 py -3 .\tools\manage.py check
 ```
 
+默认安装 Claude Code、Codex、Cursor 和 Pi 的全部支持。只安装指定 Agent 时可重复使用 `--agent`：
+
+```bash
+./tools/install.sh --agent pi
+./tools/install.sh --agent codex --agent cursor
+```
+
+Windows：
+
+```powershell
+.\tools\install.ps1 --agent pi
+.\tools\install.ps1 --agent codex --agent cursor
+```
+
+可选值为 `claude`、`codex`、`cursor`、`pi`。指定 Agent 时仍会安装 `~/.config/agents/`、Git 全局忽略和 Ruff 默认配置等共享文件。
+
 安装器发现同名文件内容不一致时拒绝覆盖。确认治理仓库是权威来源后执行：
 
 ```bash
@@ -57,6 +75,7 @@ Windows：
 - `~/.config/agents/`
 - `~/.codex/AGENTS.md`
 - `~/.claude/CLAUDE.md`
+- `~/.pi/agent/AGENTS.md`
 - `~/.agents/skills/`
 - `~/.claude/skills/`
 - `~/.codex/skills/`
@@ -65,9 +84,38 @@ Windows：
 - macOS、Linux 的 `~/.config/ruff/ruff.toml`
 - Windows 的 `%APPDATA%\ruff\ruff.toml`
 
+检查也支持限定 Agent：
+
+```bash
+python3 tools/manage.py check --agent pi
+```
+
+## 卸载与清理
+
+卸载全部受管文件：
+
+```bash
+./tools/uninstall.sh
+```
+
+Windows：
+
+```powershell
+.\tools\uninstall.ps1
+```
+
+只清理指定 Agent 的入口和 Skill，不删除共享配置或其他 Agent 文件：
+
+```bash
+./tools/uninstall.sh --agent pi
+./tools/uninstall.sh --agent claude --agent codex
+```
+
+卸载器只删除治理仓库管理的文件，并清理空目录。文件存在本地修改时默认拒绝删除；确认无需保留后使用 `--force`。不指定 `--agent` 时会同时删除共享配置。
+
 ## 日常使用
 
-全局规则和通用 Skill 安装后，由 Claude Code、Codex、Cursor 等工具按各自入口自动加载。日常开发不需要从治理仓库启动 AI 工具。
+全局规则和通用 Skill 安装后，由 Claude Code、Codex、Cursor、Pi 等工具按各自入口自动加载。Pi 从 `~/.pi/agent/AGENTS.md` 加载全局规则，并原生发现 `~/.agents/skills/` 中的通用 Skill。日常开发不需要从治理仓库启动 AI 工具。
 
 项目仓库继续维护自己的事实和差异：
 
@@ -76,6 +124,7 @@ Windows：
 | 项目主规则              | `AGENTS.md`               |
 | Claude Code 薄入口      | `CLAUDE.md`               |
 | Codex 薄入口            | `.codex/AGENTS.md`        |
+| Pi 项目规则             | 根目录 `AGENTS.md`        |
 | 项目专属 Skill          | `.agents/skills/`         |
 | Claude 项目 Skill 适配  | `.claude/skills/`         |
 | 工程质量门禁            | `.pre-commit-config.yaml` |
@@ -104,7 +153,7 @@ Windows：
 .agents/skills/tk-rag-git-workflow/SKILL.md
 ```
 
-需要支持 Claude Code 时，在 `.claude/skills/` 放置引用项目 Skill 的薄适配文件，不复制正文。
+需要支持 Claude Code 时，在 `.claude/skills/` 放置引用项目 Skill 的薄适配文件，不复制正文。Pi 原生读取项目根目录 `AGENTS.md` 和 `.agents/skills/`，无需额外适配文件。
 
 ## 已有项目接入
 
@@ -186,6 +235,7 @@ Cursor User Rules 等只能通过产品界面维护的设置不由本仓库自�
 ```bash
 python3 -m unittest discover -s tests -v
 python3 tools/manage.py check
+python3 tools/manage.py check --agent pi
 ```
 
 修改 Hook 或 Python 安装元数据后，还需验证构建和真实 pre-commit 安装。
