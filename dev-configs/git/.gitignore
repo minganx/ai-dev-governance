@@ -63,6 +63,3 @@ volumes/
 # 保留可提交的项目入口和项目 Skill，仅忽略工具本地状态。
 /.claude/settings.local.json
 /.pi/settings.json
-
-# CodeGraph 索引和日志由本机重新生成，不提交。
-.codegraph/

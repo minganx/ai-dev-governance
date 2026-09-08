@@ -22,8 +22,8 @@ GIT_IGNORE_SOURCE = REPOSITORY_ROOT / "config" / "git" / "gitignore_global"
 RUFF_CONFIG_SOURCE = REPOSITORY_ROOT / "config" / "ruff" / "ruff.toml"
 MCP_CONFIG_SOURCE = REPOSITORY_ROOT / "config" / "mcp" / "servers.json"
 CONTEXT7_WRAPPER_SOURCE = REPOSITORY_ROOT / "config" / "mcp" / "context7_mcp.py"
-SUPPORTED_AGENTS = ("claude", "codex", "cursor", "pi")
-MCP_AGENTS = ("claude", "codex", "cursor", "pi")
+SUPPORTED_AGENTS = ("claude", "codex", "cursor", "pi", "omp")
+MCP_AGENTS = ("claude", "codex", "cursor", "pi", "omp")
 PI_PACKAGES = (
     "npm:@rahularya01/pi-cursor",
     "npm:pi-mcp-adapter",
@@ -33,6 +33,7 @@ AGENT_SKILL_DIRS = {
     "codex": Path(".codex") / "skills",
     "cursor": Path(".cursor") / "skills",
     "pi": Path(".agents") / "skills",
+    "omp": Path(".omp") / "agent" / "skills",
 }
 
 
@@ -86,6 +87,11 @@ def managed_files(
     if "pi" in selected_agents:
         files.append(
             ManagedFile(CONFIG_ROOT / "AGENTS.md", home / ".pi" / "agent" / "AGENTS.md")
+        )
+
+    if "omp" in selected_agents:
+        files.append(
+            ManagedFile(CONFIG_ROOT / "AGENTS.md", home / ".omp" / "agent" / "AGENTS.md")
         )
 
     for skill_name, source, relative_path in _skill_files(CONFIG_ROOT / "skills"):
@@ -227,6 +233,8 @@ def _json_mcp_path(home: Path, agent: str) -> Path:
         return home / ".claude.json"
     if agent == "cursor":
         return home / ".cursor" / "mcp.json"
+    if agent == "omp":
+        return home / ".omp" / "agent" / "mcp.json"
     return home / ".config" / "mcp" / "mcp.json"
 
 

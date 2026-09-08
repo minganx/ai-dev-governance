@@ -22,6 +22,48 @@ from tools.manage import (
 
 
 class ManageTest(unittest.TestCase):
+    def test_omp_files_lifecycle_isolated_from_pi(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            self.assertEqual(install(home, force=False, agents=("omp",)), 0)
+            rule = home / ".omp" / "agent" / "AGENTS.md"
+            skill = home / ".omp" / "agent" / "skills" / "review-code" / "SKILL.md"
+            self.assertTrue(rule.is_file())
+            self.assertTrue(skill.is_file())
+            self.assertFalse((home / ".pi").exists())
+            self.assertFalse((home / ".agents").exists())
+            self.assertEqual(check(home, agents=("omp",)), 0)
+            rule.write_text("local", encoding="utf-8")
+            skill.unlink()
+            self.assertEqual(update(home, force=False, agents=("omp",)), 2)
+            self.assertTrue(skill.is_file())
+            self.assertEqual(rule.read_text(encoding="utf-8"), "local")
+            self.assertEqual(uninstall(home, force=False, agents=("omp",)), 2)
+            self.assertEqual(update(home, force=True, agents=("omp",)), 0)
+            self.assertEqual(uninstall(home, force=False, agents=("omp",)), 0)
+            self.assertFalse((home / ".omp").exists())
+            self.assertTrue((home / ".config" / "agents" / "AGENTS.md").is_file())
+
+    @patch.dict("os.environ", {"CONTEXT7_API_KEY": "test-context7-key"}, clear=False)
+    def test_omp_mcp_lifecycle_preserves_other_configuration(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            config = home / ".omp" / "agent" / "mcp.json"
+            config.parent.mkdir(parents=True)
+            original = {"disabledServers": ["local"], "mcpServers": {"local": {"command": "local"}}}
+            config.write_text(json.dumps(original), encoding="utf-8")
+            self.assertEqual(manage_mcp_servers(home, "install", agents=("omp",)), 0)
+            content = config.read_text(encoding="utf-8")
+            servers = json.loads(content)["mcpServers"]
+            self.assertEqual(set(servers), {"local", "context7", "deepwiki"})
+            self.assertEqual(servers["deepwiki"]["type"], "http")
+            self.assertEqual(servers["context7"]["type"], "stdio")
+            self.assertNotIn("test-context7-key", content)
+            self.assertFalse((home / ".config" / "mcp").exists())
+            self.assertEqual(manage_mcp_servers(home, "check", agents=("omp",)), 0)
+            self.assertEqual(manage_mcp_servers(home, "uninstall", agents=("omp",)), 0)
+            self.assertEqual(json.loads(config.read_text(encoding="utf-8")), original)
+
     def test_skill_files_include_supporting_resources(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             skills_root = Path(directory)
@@ -81,7 +123,7 @@ class ManageTest(unittest.TestCase):
                 manage_third_party_packages(
                     Path(directory),
                     "install",
-                    agents=("claude",),
+                    agents=("claude", "omp"),
                 ),
                 0,
             )
@@ -99,7 +141,7 @@ class ManageTest(unittest.TestCase):
             )
             config = home / ".config" / "mcp" / "mcp.json"
             content = config.read_text(encoding="utf-8")
-            self.assertIn('"codegraph"', content)
+            self.assertEqual(set(json.loads(content)["mcpServers"]), {"context7", "deepwiki"})
             self.assertIn('"context7"', content)
             self.assertIn('"deepwiki"', content)
             self.assertNotIn("test-context7-key", content)
@@ -123,7 +165,6 @@ class ManageTest(unittest.TestCase):
                 Mock(returncode=0, stdout="[]", stderr=""),
                 Mock(returncode=0),
                 Mock(returncode=0),
-                Mock(returncode=0),
             ]
 
             self.assertEqual(
@@ -141,7 +182,7 @@ class ManageTest(unittest.TestCase):
             )
             self.assertEqual(
                 [command[3] for command in commands[1:]],
-                ["codegraph", "context7", "deepwiki"],
+                ["context7", "deepwiki"],
             )
 
     @patch.dict("os.environ", {"CONTEXT7_API_KEY": "test-context7-key"}, clear=False)
@@ -169,7 +210,6 @@ class ManageTest(unittest.TestCase):
             servers = json.loads(config.read_text(encoding="utf-8"))["mcpServers"]
             self.assertEqual(servers["local"]["command"], "local-mcp")
             self.assertEqual(servers["context7"]["command"], "custom-context7")
-            self.assertIn("codegraph", servers)
             self.assertIn("deepwiki", servers)
 
             self.assertEqual(
@@ -177,7 +217,6 @@ class ManageTest(unittest.TestCase):
                 2,
             )
             servers = json.loads(config.read_text(encoding="utf-8"))["mcpServers"]
-            self.assertIn("codegraph", servers)
             self.assertIn("deepwiki", servers)
 
             self.assertEqual(

@@ -4,7 +4,7 @@
 
 ## 文件清单
 
-- `agents/`：项目 `AGENTS.md`、Claude、Codex 薄入口和 CodeGraph 使用约定。
+- `agents/`：项目 `AGENTS.md`、Claude、Codex 薄入口。
 - `git/`：项目 `.gitignore` 和 `.gitattributes` 通用模板。
 - `python/pyproject.toml`：`uv`、setuptools、Ruff、deptry、Bandit、Commitizen 的组合模板。
 - `python/pyrightconfig.json`：Python 3.11、`.venv`、`src` 布局的 Pyright 模板。

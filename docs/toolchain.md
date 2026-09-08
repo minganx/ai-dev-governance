@@ -8,7 +8,7 @@
 | --------------------------- | ------------------------------------- | ---------------------------------------------- |
 | Git 全局忽略                | `config/git/gitignore_global`         | 忽略操作系统、编辑器和通用缓存等本机噪音       |
 | Git 项目模板                | `dev-configs/git/`                    | 手工复制并调整项目忽略和跨平台属性             |
-| 项目级 Agent 模板           | `dev-configs/agents/`                 | 手工复制项目规则入口和 CodeGraph 约定          |
+| 项目级 Agent 模板           | `dev-configs/agents/`                 | 手工复制项目规则入口          |
 | Ruff 用户级默认配置         | `config/ruff/ruff.toml`               | 为没有 Ruff 配置的 Python 项目提供默认检查规则 |
 | MCP Server 配置             | `config/mcp/`                         | 同步非敏感定义并在设备本地保存 API Key         |
 | Python 项目模板             | `dev-configs/python/`                  | 手工复制并调整 pyproject、Pyright 和项目范围   |
@@ -49,7 +49,7 @@ git config --global --get core.excludesFile
 
 ## MCP
 
-仓库维护 CodeGraph、Context7、DeepWiki 的非敏感定义，并将受管条目合并到 Claude、Codex、Cursor 和 Pi 配置。Pi 通过官方 `pi-mcp-adapter` Package 读取 `~/.config/mcp/mcp.json`；其他 Agent 使用自己的用户级 MCP 配置。同步只修改受管 Server，不覆盖工具中的其他 MCP。
+仓库维护 Context7、DeepWiki 的非敏感定义，并将受管条目合并到 Claude、Codex、Cursor、Pi 和 oh-my-pi 配置。Pi 通过官方 `pi-mcp-adapter` Package 读取 `~/.config/mcp/mcp.json`；oh-my-pi 使用默认目录 `~/.omp/agent/mcp.json`；其他 Agent 使用自己的用户级 MCP 配置。同步只修改受管 Server，不覆盖工具中的其他 MCP。
 
 Context7 API Key 由安装器隐藏输入并保存到设备的 `~/.config/agents/mcp/context7-api-key`，macOS、Linux 权限为 `0600`。MCP 配置只引用本地启动器和密钥路径，不包含 Key 明文；启动器通过环境变量调用 Context7 官方 npm Server。OAuth、其他 API Key 和工具生成的 MCP 缓存不纳管。
 

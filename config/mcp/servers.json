@@ -1,22 +1,13 @@
 {
-  "codegraph": {
-    "agents": ["claude", "codex", "cursor", "pi"],
-    "transport": "stdio",
-    "command": "codegraph",
-    "args": ["serve", "--mcp"],
-    "agentArgs": {
-      "cursor": ["serve", "--mcp", "--path", "${workspaceFolder}"]
-    }
-  },
   "context7": {
-    "agents": ["claude", "codex", "cursor", "pi"],
+    "agents": ["claude", "codex", "cursor", "pi", "omp"],
     "transport": "stdio",
     "command": "@python",
     "args": ["@context7-wrapper", "--secret-file", "@context7-api-key"],
     "secret": "context7-api-key"
   },
   "deepwiki": {
-    "agents": ["claude", "codex", "cursor", "pi"],
+    "agents": ["claude", "codex", "cursor", "pi", "omp"],
     "transport": "http",
     "url": "https://mcp.deepwiki.com/mcp"
   }

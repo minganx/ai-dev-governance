@@ -22,14 +22,6 @@
 
 删除未使用的说明，不复制全局规则正文。
 
-## CodeGraph
-
-仓库存在 `.codegraph/` 时，在使用 grep、find 或逐文件读取前优先使用 CodeGraph 定位符号和调用链：
-
-- MCP 可用时优先调用 `codegraph_explore`。
-- Shell 环境使用 `codegraph explore "<符号名或问题>"`。
-- `.codegraph/` 不存在时跳过 CodeGraph，不自行建立索引。
-
 ## 项目 Skill
 
 项目专属 Skill 放在 `.agents/skills/<项目前缀>-<名称>/`，使用项目前缀避免覆盖系统级同名 Skill。Skill 带有脚本、参考资料或资源时，将完整目录提交到项目仓库。
