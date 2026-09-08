@@ -24,6 +24,7 @@ MCP_CONFIG_SOURCE = REPOSITORY_ROOT / "config" / "mcp" / "servers.json"
 CONTEXT7_WRAPPER_SOURCE = REPOSITORY_ROOT / "config" / "mcp" / "context7_mcp.py"
 SUPPORTED_AGENTS = ("claude", "codex", "cursor", "pi", "omp")
 MCP_AGENTS = ("claude", "codex", "cursor", "pi", "omp")
+RETIRED_MCP_SERVERS = ("codegraph",)
 PI_PACKAGES = (
     "npm:@rahularya01/pi-cursor",
     "npm:pi-mcp-adapter",
@@ -406,6 +407,9 @@ def manage_mcp_servers(
             except (json.JSONDecodeError, OSError, RuntimeError) as error:
                 print(error, file=sys.stderr)
                 return 1
+            for name in RETIRED_MCP_SERVERS:
+                if name in current:
+                    drifted.append(f"{agent}:{name}（已退役，执行 update 清理）")
             for name, expected in desired.items():
                 if current.get(name) != expected:
                     drifted.append(f"{agent}:{name}")
@@ -458,6 +462,11 @@ def manage_mcp_servers(
         try:
             if agent == "codex":
                 codex, current = _read_codex_mcp_servers(home)
+                for name in RETIRED_MCP_SERVERS:
+                    if name in current:
+                        if _run_codex_mcp_command(home, codex, "remove", name) != 0:
+                            return 1
+                        print(f"removed retired MCP {agent}:{name}")
                 for name, expected in desired.items():
                     actual = current.get(name)
                     if command == "uninstall":
@@ -484,6 +493,11 @@ def manage_mcp_servers(
 
             document, raw = _read_json_mcp_servers(home, agent)
             changed = False
+            for name in RETIRED_MCP_SERVERS:
+                if name in raw:
+                    del raw[name]
+                    changed = True
+                    print(f"removed retired MCP {agent}:{name}")
             for name, expected in desired.items():
                 actual = _normalize_json_mcp(raw.get(name))
                 if command == "uninstall":
@@ -626,6 +640,37 @@ def uninstall(
     return 0
 
 
+def _select_install_agents() -> tuple[str, ...]:
+    if not sys.stdin.isatty():
+        raise ValueError("非交互安装必须通过 --agent 指定 Agent。")
+    print("选择要安装的 Agent 支持（可多选）：")
+    for number, agent in enumerate(SUPPORTED_AGENTS, 1):
+        print(f"  {number}. {agent}")
+    print("输入编号或名称，以空格或逗号分隔；输入 all 安装全部，q 取消。")
+    while True:
+        try:
+            answer = input("Agent: ").strip().lower()
+        except EOFError as error:
+            raise ValueError("安装已取消，未选择 Agent。") from error
+        if answer == "q":
+            raise ValueError("安装已取消。")
+        if answer == "all":
+            return SUPPORTED_AGENTS
+        choices = answer.replace(",", " ").split()
+        selected = []
+        for choice in choices:
+            if choice in SUPPORTED_AGENTS:
+                selected.append(choice)
+            elif choice in {str(i) for i in range(1, len(SUPPORTED_AGENTS) + 1)}:
+                selected.append(SUPPORTED_AGENTS[int(choice) - 1])
+            else:
+                break
+        else:
+            if selected:
+                return tuple(dict.fromkeys(selected))
+        print("请选择有效的 Agent；空输入不会安装任何 Agent。")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("install", "update", "check", "uninstall"))
@@ -635,7 +680,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         choices=SUPPORTED_AGENTS,
         dest="agents",
-        help="只管理指定 Agent，可重复使用；默认管理全部 Agent",
+        help="只管理指定 Agent，可重复使用；安装时未指定则交互选择，其他命令默认全部",
     )
     parser.add_argument("--home", type=Path, default=Path.home(), help=argparse.SUPPRESS)
     return parser
@@ -646,6 +691,12 @@ def main() -> int:
     home = args.home.expanduser().resolve()
     agents = tuple(dict.fromkeys(args.agents)) if args.agents else None
     if args.command == "install":
+        if agents is None:
+            try:
+                agents = _select_install_agents()
+            except ValueError as error:
+                print(error, file=sys.stderr)
+                return 2
         result = install(home, args.force, agents)
         if result != 0:
             return result

@@ -8,6 +8,9 @@ from unittest.mock import Mock, patch
 
 from tools.manage import (
     CLAUDE_ENTRY,
+    SUPPORTED_AGENTS,
+    _select_install_agents,
+    main,
     PI_PACKAGES,
     _skill_files,
     _require_context7_key,
@@ -22,6 +25,82 @@ from tools.manage import (
 
 
 class ManageTest(unittest.TestCase):
+    @patch("tools.manage.sys.stdin.isatty", return_value=True)
+    @patch("builtins.input", side_effect=["", "invalid", "2, omp codex"])
+    def test_install_menu_requires_valid_explicit_selection(self, _: Mock, tty: Mock) -> None:
+        self.assertEqual(_select_install_agents(), ("codex", "omp"))
+
+    @patch("tools.manage.sys.stdin.isatty", return_value=True)
+    def test_install_menu_all_and_cancel(self, _: Mock) -> None:
+        with patch("builtins.input", return_value="all"):
+            self.assertEqual(_select_install_agents(), SUPPORTED_AGENTS)
+        with patch("builtins.input", return_value="q"):
+            with self.assertRaises(ValueError):
+                _select_install_agents()
+        with patch("builtins.input", side_effect=EOFError):
+            with self.assertRaises(ValueError):
+                _select_install_agents()
+
+    @patch("tools.manage.sys.stdin.isatty", return_value=False)
+    @patch("tools.manage.install")
+    def test_noninteractive_install_without_agents_writes_nothing(self, install_mock: Mock, _: Mock) -> None:
+        with patch("sys.argv", ["manage.py", "install"]):
+            self.assertEqual(main(), 2)
+        install_mock.assert_not_called()
+
+    @patch("tools.manage._select_install_agents")
+    @patch("tools.manage.manage_mcp_servers", return_value=0)
+    @patch("tools.manage.manage_third_party_packages", return_value=0)
+    @patch("tools.manage.install", return_value=0)
+    def test_explicit_install_agent_skips_menu(self, install_mock: Mock, packages: Mock, mcp: Mock, menu: Mock) -> None:
+        with patch("sys.argv", ["manage.py", "install", "--agent", "omp"]):
+            self.assertEqual(main(), 0)
+        menu.assert_not_called()
+        self.assertEqual(install_mock.call_args.args[2], ("omp",))
+        self.assertEqual(packages.call_args.args[2], ("omp",))
+        self.assertEqual(mcp.call_args.args[2], ("omp",))
+
+    @patch.dict("os.environ", {"CONTEXT7_API_KEY": "test-key"}, clear=False)
+    def test_retired_json_mcp_is_detected_and_removed(self) -> None:
+        paths = {
+            "claude": ".claude.json",
+            "cursor": ".cursor/mcp.json",
+            "pi": ".config/mcp/mcp.json",
+            "omp": ".omp/agent/mcp.json",
+        }
+        for agent, relative in paths.items():
+            for action in ("install", "update", "uninstall"):
+                with self.subTest(agent=agent, action=action), tempfile.TemporaryDirectory() as directory:
+                    home = Path(directory)
+                    self.assertEqual(manage_mcp_servers(home, "install", (agent,)), 0)
+                    config = home / relative
+                    document = json.loads(config.read_text())
+                    document["mcpServers"].update({
+                        "codegraph": {"command": "codegraph", "args": ["serve", "--mcp"]},
+                        "local": {"command": "local"},
+                    })
+                    config.write_text(json.dumps(document))
+                    self.assertEqual(manage_mcp_servers(home, "check", (agent,)), 1)
+                    self.assertEqual(manage_mcp_servers(home, action, (agent,)), 0)
+                    servers = json.loads(config.read_text())["mcpServers"]
+                    self.assertNotIn("codegraph", servers)
+                    self.assertEqual(servers["local"], {"command": "local"})
+                    self.assertEqual(manage_mcp_servers(home, action, (agent,)), 0)
+
+    @patch.dict("os.environ", {"CONTEXT7_API_KEY": "test-key"}, clear=False)
+    @patch("tools.manage._read_codex_mcp_servers")
+    @patch("tools.manage._run_codex_mcp_command", return_value=0)
+    def test_codex_retirement_uses_remove_and_propagates_failure(self, command: Mock, read: Mock) -> None:
+        read.return_value = ("codex", {"codegraph": {"command": "codegraph"}})
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            self.assertEqual(manage_mcp_servers(home, "update", ("codex",)), 0)
+            self.assertEqual(command.call_args_list[0].args, (home, "codex", "remove", "codegraph"))
+            command.reset_mock()
+            command.return_value = 1
+            self.assertEqual(manage_mcp_servers(home, "update", ("codex",)), 1)
+            command.assert_called_once_with(home, "codex", "remove", "codegraph")
+
     def test_omp_files_lifecycle_isolated_from_pi(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)

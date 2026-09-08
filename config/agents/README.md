@@ -54,7 +54,7 @@ npx -y skills add tt-a1i/archify --skill archify --agent cursor --global --copy 
 
 ## MCP 配置
 
-`config/mcp/servers.json` 只维护 Context7、DeepWiki 的非敏感定义。安装器将对应条目合并到 Claude、Codex、Cursor、oh-my-pi 配置，并为 Pi 写入 `pi-mcp-adapter` 官方支持的 `~/.config/mcp/mcp.json`；其他 MCP 条目保持不变。
+`config/mcp/servers.json` 只维护 Context7、DeepWiki 的非敏感定义。安装器将对应条目合并到 Claude、Codex、Cursor、oh-my-pi 配置，并为 Pi 写入 `pi-mcp-adapter` 官方支持的 `~/.config/mcp/mcp.json`；其他 MCP 条目保持不变，已退役的 `codegraph` 条目在安装、更新和卸载时清理，检查时报告残留。
 
 Context7 API Key 不写入仓库或 MCP JSON/TOML。首次安装时提示用户先保存到密码管理器，再隐藏输入并保存到 `~/.config/agents/mcp/context7-api-key`（macOS、Linux 权限为 `0600`）。MCP 启动器在运行时通过 `CONTEXT7_API_KEY` 环境变量传给 Context7 官方 Server，不把 Key 放入命令参数。
 

@@ -90,7 +90,7 @@ git config --global core.excludesFile "$HOME/.gitignore_global"
 py -3 .\tools\manage.py check
 ```
 
-默认安装全部 Agent 支持。使用可重复的 `--agent` 仅安装指定 Agent；可选值为 `claude`、`codex`、`cursor`、`pi`、`omp`。首次配置 MCP 时，安装器会提示先将 Context7 API Key 保存到密码管理器，再以不回显方式粘贴。Key 只写入设备文件 `~/.config/agents/mcp/context7-api-key`（macOS、Linux 权限为 `0600`），不会进入仓库或 Agent MCP 配置。
+安装时未指定 `--agent` 会显示多选菜单，可输入编号或名称（空格或逗号分隔），输入 `all` 安装全部，输入 `q` 取消；空输入不会默认安装全部。非交互安装必须指定 `--agent`，否则在写入前退出。使用可重复的 `--agent` 仅安装指定 Agent；可选值为 `claude`、`codex`、`cursor`、`pi`、`omp`。首次配置 MCP 时，安装器会提示先将 Context7 API Key 保存到密码管理器，再以不回显方式粘贴。Key 只写入设备文件 `~/.config/agents/mcp/context7-api-key`（macOS、Linux 权限为 `0600`），不会进入仓库或 Agent MCP 配置。
 
 选择 Pi 前必须已安装可执行的 Pi CLI，安装器会继续通过 Pi 官方命令安装 `pi-cursor` 和 `pi-mcp-adapter` Package：
 
@@ -142,9 +142,9 @@ py -3 .\tools\manage.py check
 ./tools/update.sh --force
 ```
 
-MCP 同步管理 Context7 和 DeepWiki，并保留各工具中其他 MCP。Context7 通过本地启动器读取设备 Key，不把 Key 写入进程参数。非交互环境可临时提供 `CONTEXT7_API_KEY`；安装器只保存其值，不输出内容。
+MCP 同步管理 Context7 和 DeepWiki，并保留各工具中其他 MCP。安装、更新和卸载会删除已退役的 `codegraph` MCP 条目；`check` 会报告其残留，Codex 通过官方 `codex mcp remove codegraph` 清理。Context7 通过本地启动器读取设备 Key，不把 Key 写入进程参数。非交互环境可临时提供 `CONTEXT7_API_KEY`；安装器只保存其值，不输出内容。
 
-选择 Pi 时，更新器同时更新 `pi-cursor` 和 `pi-mcp-adapter`，检查器通过 `pi list` 验证 Package。更新和检查同样支持限定 Agent：
+选择 Pi 时，更新器同时更新 `pi-cursor` 和 `pi-mcp-adapter`，检查器通过 `pi list` 验证 Package。更新和检查未指定 Agent 时仍处理全部支持的 Agent，可显式限定范围：
 
 ```bash
 ./tools/update.sh --agent pi
