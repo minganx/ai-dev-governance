@@ -59,5 +59,6 @@ CC Switch 数据库中的 6 条提示词已去重并归入以下来源：
 - `默认 Agent 通用` 与 `默认 Python 开发`：重复内容合入 `AGENTS.md`。
 - `Python 项目默认提示词`：项目无关部分进入 `dev-configs/agents/`；`tk_rag` 项目事实继续由该项目自己的 `AGENTS.md` 管理。
 - `Obsidian 笔记库结构、归类与笔记体写作规范`：迁入 `skills/obsidian-notes/`；通用技术笔记规则补充到 `skills/docs-workflow/`。
+- `技术培训 · 研究笔记工作流`：迁入 `skills/tech-training-research/`；研究笔记为主、培训为提炼，含叙事、名词附录、成本示例与阶段划分约定。
 
 `oa-timesheet` 及其浏览器扩展由其他仓库管理，不迁入本仓库。
