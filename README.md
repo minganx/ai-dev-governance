@@ -2,19 +2,18 @@
 
 ## 项目介绍
 
-本仓库集中维护可在多台设备复用的 AI 开发规则、通用 Skill、开发工具默认配置和 Commit message Hook，兼容 Claude Code、Codex、Cursor、Pi 和 oh-my-pi，支持 macOS、Windows、Linux。
+本仓库集中维护可在多台设备复用的 AI 开发规则、通用 Skill、开发工具默认配置和 Commit message Hook，兼容 Cursor、Codex 和 Claude Code，支持 macOS、Windows、Linux。
 
 仓库自维护的规则和 Skill 是设备受管文件的来源，安装、更新和卸载采用文件复制，不依赖符号链接权限。第三方 Skill、插件和扩展只保存来源及官方安装命令，由对应工具管理版本；仓库不保存其正文、安装缓存、Token、API Key、OAuth、MCP 凭据、会话或缓存。
 
 ## 管理范围
 
 - 全局 AI 开发规则和通用 Skill。
-- Claude Code、Codex、Cursor、Pi、oh-my-pi 的规则入口、Skill 和 MCP 配置同步。
+- Cursor、Codex、Claude Code 的规则入口、Skill 和 MCP 配置同步。
 - Git 全局忽略文件和 Ruff 用户级默认配置。
 - 项目级 Agent、Git、`pyproject.toml`、Pyright、Prettier、pre-commit 等个人配置模板。
 - Commit 正文最低质量检查器及 pre-commit Hook 声明。
 - 跨平台安装、增量更新、漂移检查和卸载工具。
-- 选择 Pi 时，通过 Pi CLI 管理 `npm:@rahularya01/pi-cursor` 和 `npm:pi-mcp-adapter`。
 
 设备管理工具只处理本仓库明确映射的自维护文件。设备上已有的第三方 Skill、插件、工具配置和凭据不属于复制范围，不会因更新或卸载被清理；第三方资源通过各工具的安装和更新命令维护。
 
@@ -31,7 +30,6 @@
 | `config/git/gitignore_global`   | Git 全局忽略规则               |
 | `config/ruff/ruff.toml`         | Ruff 用户级默认配置            |
 | `config/mcp/servers.json`       | 跨 Agent MCP 非敏感配置源      |
-| `config/mcp/context7_mcp.py`    | Context7 本地密钥启动器        |
 | `dev-configs/agents/`           | 项目级 Agent 模板 |
 | `dev-configs/git/`              | 项目 Git 配置模板              |
 | `dev-configs/python/`           | Python 项目配置模板            |
@@ -49,24 +47,15 @@
 
 | 目标路径                                      | 范围                    |
 | --------------------------------------------- | ----------------------- |
-| `~/.config/agents/`                           | 共享规则和 Skill 副本   |
+| `~/.config/agents/`                           | 所选共享规则、Skill 副本和安装选择记录 |
 | `~/.claude/CLAUDE.md`、`~/.claude/skills/`    | Claude Code             |
 | `~/.codex/AGENTS.md`、`~/.codex/skills/`      | Codex                   |
 | `~/.cursor/skills/`                           | Cursor                  |
-| `~/.pi/agent/AGENTS.md`、`~/.agents/skills/`  | Pi                      |
-| `~/.omp/agent/AGENTS.md`、`~/.omp/agent/skills/` | oh-my-pi |
-| `~/.omp/agent/mcp.json` | oh-my-pi 原生 MCP |
 | `~/.claude.json`、`~/.codex/config.toml`      | Claude、Codex MCP       |
 | `~/.cursor/mcp.json`                          | Cursor MCP              |
-| `~/.config/mcp/mcp.json`                      | Pi 共享 MCP             |
-| `~/.config/agents/mcp/`                       | MCP 启动器及本地密钥    |
-| `npm:@rahularya01/pi-cursor`                  | Pi 的 Cursor 订阅支持   |
-| `npm:pi-mcp-adapter`                          | Pi 的 MCP 支持          |
 | `~/.gitignore_global`                         | Git 全局忽略            |
 | `~/.config/ruff/ruff.toml`                    | macOS、Linux Ruff 默认值 |
 | `%APPDATA%\ruff\ruff.toml`                    | Windows Ruff 默认值      |
-
-Pi 原生发现 `~/.agents/skills/`，因此不向 `~/.pi/agent/skills/` 重复复制通用 Skill。
 
 ## 初次使用
 
@@ -90,31 +79,21 @@ git config --global core.excludesFile "$HOME/.gitignore_global"
 py -3 .\tools\manage.py check
 ```
 
-安装时未指定 `--agent` 会显示多选菜单，可输入编号或名称（空格或逗号分隔），输入 `all` 安装全部，输入 `q` 取消；空输入不会默认安装全部。非交互安装必须指定 `--agent`，否则在写入前退出。使用可重复的 `--agent` 仅安装指定 Agent；可选值为 `claude`、`codex`、`cursor`、`pi`、`omp`。首次配置 MCP 时，安装器会提示先将 Context7 API Key 保存到密码管理器，再以不回显方式粘贴。Key 只写入设备文件 `~/.config/agents/mcp/context7-api-key`（macOS、Linux 权限为 `0600`），不会进入仓库或 Agent MCP 配置。
+安装无需拼接配置参数，直接运行脚本，在终端依次输入数字选择：
 
-选择 Pi 前必须已安装可执行的 Pi CLI，安装器会继续通过 Pi 官方命令安装 `pi-cursor` 和 `pi-mcp-adapter` Package：
+1. Agent：Claude Code、Codex、Cursor，可多选。
+2. Skill：按仓库当前的通用 Skill 清单逐项选择。
+3. MCP：选择需要同步的 Server，目前为 DeepWiki。
+4. 开发工具配置：全局 Agent 规则、Git 全局忽略、Ruff 默认配置，可独立选择。
+5. 已有不同内容的处理方式：保留已有内容，或以仓库内容覆盖。
 
-```bash
-./tools/install.sh --agent pi
-./tools/install.sh --agent codex --agent cursor
-```
+多选编号用空格或逗号分隔，例如 `1 3` 或 `1,3`；菜单还提供全选、`0` 跳过和取消安装的数字选项。空输入、名称和无效数字会要求重新选择。跳过 Agent 时不再显示 Skill、MCP 菜单，仍可选择 Git、Ruff 等配置。所有菜单选择完成后才开始写入；取消、输入结束或中断会直接退出。
 
-oh-my-pi CLI 按[官方仓库](https://github.com/can1357/oh-my-pi)安装。本仓库管理默认目录 `~/.omp/agent/` 下的规则、Skill 和原生 MCP，不管理自定义目录、XDG 目录或命名 Profile，也不为 oh-my-pi 安装 Pi Package。
+安装不接受 `--agent`、`--skill`、`--mcp`、`--force` 等配置参数，也不支持非交互安装。保留已有内容时，文件冲突会阻止文件安装；需要覆盖时重新运行安装脚本，在菜单中选择覆盖。
 
-```bash
-./tools/install.sh --agent omp
-./tools/update.sh --agent omp
-python3 tools/manage.py check --agent omp
-./tools/uninstall.sh --agent omp
-```
+选择记录保存在设备的 `~/.config/agents/install-selection.json`，供更新、检查和卸载读取。再次安装会用本次选择替换记录，未选中的已有文件不会被自动删除。共享规则、共享 Skill、Git 和 Ruff 配置只安装所选项，Skill 的支持文件随选中的 Skill 一起复制。
 
-Archify 的来源和全局安装命令见 [第三方 Skill](config/agents/README.md#archify)。
-
-指定 Agent 时仍会安装共享规则、共享 Skill、Git 全局忽略和 Ruff 默认配置。目标文件存在不同内容时，安装器不会覆盖；确认以仓库版本为准后使用 `--force`。
-
-```bash
-./tools/install.sh --agent pi --force
-```
+Context7 在安装和更新时只输出一次安装文档提示，独立安装方式见 [Context7 安装说明](docs/context7.md)。Archify 等第三方资源继续由原工具管理，见 [第三方 Skill](config/agents/README.md#archify)。
 
 ## 更新使用
 
@@ -134,7 +113,7 @@ git pull --ff-only
 py -3 .\tools\manage.py check
 ```
 
-更新会跳过内容一致的文件，安装新增或设备缺失的自维护文件。例如在 `config/agents/skills/` 新增一个自行编写的笔记 Skill 后，执行更新即可将完整 Skill 目录（包括 `scripts/`、`references/`、`assets/`）复制到各 Agent 的受管目录。第三方 Skill、插件和扩展不经过复制更新，使用 `config/agents/README.md` 中对应工具的官方命令安装和更新。
+更新会沿用设备保存的安装选择，跳过内容一致的文件，补齐所选配置缺失的文件。所选 Skill 的完整目录（包括 `scripts/`、`references/`、`assets/`）一起更新；新增 Skill 不会自动安装，需要重新运行安装菜单选择。第三方 Skill、插件和扩展不经过复制更新，使用 `config/agents/README.md` 中对应工具的官方命令安装和更新。
 
 如果设备文件与仓库版本不同，更新器会保留设备文件、继续更新其他安全项，并以状态码 `2` 报告差异。确认全部差异都应以仓库版本覆盖时使用：
 
@@ -142,18 +121,11 @@ py -3 .\tools\manage.py check
 ./tools/update.sh --force
 ```
 
-MCP 同步管理 Context7 和 DeepWiki，并保留各工具中其他 MCP。安装、更新和卸载会删除已退役的 `codegraph` MCP 条目；`check` 会报告其残留，Codex 通过官方 `codex mcp remove codegraph` 清理。Context7 通过本地启动器读取设备 Key，不把 Key 写入进程参数。非交互环境可临时提供 `CONTEXT7_API_KEY`；安装器只保存其值，不输出内容。
-
-选择 Pi 时，更新器同时更新 `pi-cursor` 和 `pi-mcp-adapter`，检查器通过 `pi list` 验证 Package。更新和检查未指定 Agent 时仍处理全部支持的 Agent，可显式限定范围：
-
-```bash
-./tools/update.sh --agent pi
-python3 tools/manage.py check --agent pi
-```
+MCP 同步仅管理 DeepWiki，并保留各工具中其他 MCP，包括已有 Context7 配置。安装、更新和卸载会删除已退役的 `codegraph` MCP 条目；`check` 会报告其残留。更新和检查默认沿用安装选择，也可通过 `--agent` 缩小到已选择的 Agent。旧设备没有选择记录时，仍按原行为管理全部三个 Agent 和受管配置；可重新运行安装菜单明确范围。跳过 MCP 后，更新、检查和卸载均不操作 MCP 配置。
 
 ## 卸载
 
-卸载全部受管文件：
+卸载安装选择中的全部受管文件：
 
 ```bash
 ./tools/uninstall.sh
@@ -165,11 +137,11 @@ Windows：
 .\tools\uninstall.ps1
 ```
 
-只卸载指定 Agent 的规则入口和 Skill，不删除共享配置或其他 Agent 文件：
+只卸载指定 Agent 的已选规则入口、Skill 和 MCP，不删除共享配置或其他 Agent 文件；成功后从安装选择中移除该 Agent：
 
 ```bash
-./tools/uninstall.sh --agent pi
+./tools/uninstall.sh --agent cursor
 ./tools/uninstall.sh --agent claude --agent codex
 ```
 
-卸载器只删除本仓库映射的文件和 MCP Server 条目并清理空目录，不处理设备上的额外配置。卸载 Pi 支持时同时移除 `pi-cursor` 和 `pi-mcp-adapter`。Context7 API Key 默认保留，便于重新安装；需要彻底清理时手工删除 `~/.config/agents/mcp/context7-api-key`。受管文件或 MCP 条目存在本地差异时默认拒绝删除；确认无需保留后使用 `--force`。不指定 `--agent` 时会同时删除共享配置。
+卸载器只删除本仓库映射的文件和受管 MCP Server 条目并清理空目录，不处理设备上的额外配置。受管文件或 MCP 条目存在本地差异时默认拒绝删除；确认无需保留后使用 `--force`。不指定 `--agent` 时会同时删除所选共享配置和安装选择记录。历史安装留下的其他 Agent 文件、Context7 启动器和密钥不再纳管，需要清理时自行处理。

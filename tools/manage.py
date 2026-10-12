@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
-"""跨平台管理 AI 开发规则、Skill、MCP 配置和受管 Pi Package。"""
+"""跨平台管理 AI 开发规则、Skill、MCP 配置。"""
 
 from __future__ import annotations
 
 import argparse
-import getpass
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Optional
 
@@ -21,20 +20,14 @@ CLAUDE_ENTRY = REPOSITORY_ROOT / "config" / "tool-entries" / "claude" / "CLAUDE.
 GIT_IGNORE_SOURCE = REPOSITORY_ROOT / "config" / "git" / "gitignore_global"
 RUFF_CONFIG_SOURCE = REPOSITORY_ROOT / "config" / "ruff" / "ruff.toml"
 MCP_CONFIG_SOURCE = REPOSITORY_ROOT / "config" / "mcp" / "servers.json"
-CONTEXT7_WRAPPER_SOURCE = REPOSITORY_ROOT / "config" / "mcp" / "context7_mcp.py"
-SUPPORTED_AGENTS = ("claude", "codex", "cursor", "pi", "omp")
-MCP_AGENTS = ("claude", "codex", "cursor", "pi", "omp")
+CONTEXT7_INSTALL_DOCS = "https://context7.com/docs/resources/all-clients"
+SUPPORTED_AGENTS = ("claude", "codex", "cursor")
+MCP_AGENTS = ("claude", "codex", "cursor")
 RETIRED_MCP_SERVERS = ("codegraph",)
-PI_PACKAGES = (
-    "npm:@rahularya01/pi-cursor",
-    "npm:pi-mcp-adapter",
-)
 AGENT_SKILL_DIRS = {
     "claude": Path(".claude") / "skills",
     "codex": Path(".codex") / "skills",
     "cursor": Path(".cursor") / "skills",
-    "pi": Path(".agents") / "skills",
-    "omp": Path(".omp") / "agent" / "skills",
 }
 
 
@@ -42,6 +35,37 @@ AGENT_SKILL_DIRS = {
 class ManagedFile:
     source: Path
     target: Path
+
+
+@dataclass(frozen=True)
+class InstallSelection:
+    agents: tuple[str, ...]
+    skills: tuple[str, ...]
+    mcps: tuple[str, ...]
+    configs: tuple[str, ...]
+
+
+def _selection_path(home: Path) -> Path:
+    return home / ".config" / "agents" / "install-selection.json"
+
+
+def _read_selection(home: Path) -> Optional[InstallSelection]:
+    path = _selection_path(home)
+    if not path.exists():
+        return None
+    document = json.loads(path.read_text(encoding="utf-8"))
+    keys = {"agents", "skills", "mcps", "configs"}
+    if not isinstance(document, dict) or set(document) != keys:
+        raise ValueError("安装选择必须包含 agents、skills、mcps、configs。")
+    if any(not isinstance(values, list) or any(not isinstance(value, str) for value in values)
+           for values in document.values()):
+        raise ValueError("安装选择的每一项必须是名称列表。")
+    selection = InstallSelection(**{key: tuple(value) for key, value in document.items()})
+    if any(agent not in SUPPORTED_AGENTS for agent in selection.agents):
+        raise ValueError("安装选择包含不支持的 Agent。")
+    if any(config not in ("rules", "git", "ruff") for config in selection.configs):
+        raise ValueError("安装选择包含不支持的开发工具配置。")
+    return selection
 
 
 def _ruff_config_target(home: Path) -> Path:
@@ -64,38 +88,33 @@ def managed_files(
     agents: Optional[tuple[str, ...]] = None,
     *,
     include_shared: bool = True,
+    selection: Optional[InstallSelection] = None,
 ) -> list[ManagedFile]:
-    selected_agents = agents or SUPPORTED_AGENTS
+    selected_agents = (
+        agents if agents is not None
+        else selection.agents if selection else SUPPORTED_AGENTS
+    )
     files: list[ManagedFile] = []
+    configs = selection.configs if selection else ("rules", "git", "ruff")
     if include_shared:
-        files.extend(
-            [
-                ManagedFile(
-                    CONFIG_ROOT / "AGENTS.md",
-                    home / ".config" / "agents" / "AGENTS.md",
-                ),
-                ManagedFile(GIT_IGNORE_SOURCE, home / ".gitignore_global"),
-                ManagedFile(RUFF_CONFIG_SOURCE, _ruff_config_target(home)),
-            ]
-        )
+        shared = {
+            "rules": ManagedFile(
+                CONFIG_ROOT / "AGENTS.md", home / ".config" / "agents" / "AGENTS.md"
+            ),
+            "git": ManagedFile(GIT_IGNORE_SOURCE, home / ".gitignore_global"),
+            "ruff": ManagedFile(RUFF_CONFIG_SOURCE, _ruff_config_target(home)),
+        }
+        files.extend(shared[name] for name in configs)
 
-    if "claude" in selected_agents:
-        files.append(ManagedFile(CLAUDE_ENTRY, home / ".claude" / "CLAUDE.md"))
-    if "codex" in selected_agents:
-        files.append(
-            ManagedFile(CONFIG_ROOT / "AGENTS.md", home / ".codex" / "AGENTS.md")
-        )
-    if "pi" in selected_agents:
-        files.append(
-            ManagedFile(CONFIG_ROOT / "AGENTS.md", home / ".pi" / "agent" / "AGENTS.md")
-        )
-
-    if "omp" in selected_agents:
-        files.append(
-            ManagedFile(CONFIG_ROOT / "AGENTS.md", home / ".omp" / "agent" / "AGENTS.md")
-        )
+    if "rules" in configs:
+        if "claude" in selected_agents:
+            files.append(ManagedFile(CLAUDE_ENTRY, home / ".claude" / "CLAUDE.md"))
+        if "codex" in selected_agents:
+            files.append(ManagedFile(CONFIG_ROOT / "AGENTS.md", home / ".codex" / "AGENTS.md"))
 
     for skill_name, source, relative_path in _skill_files(CONFIG_ROOT / "skills"):
+        if selection is not None and skill_name not in selection.skills:
+            continue
         if include_shared:
             files.append(
                 ManagedFile(
@@ -132,15 +151,17 @@ def install(
     home: Path,
     force: bool,
     agents: Optional[tuple[str, ...]] = None,
+    *,
+    selection: Optional[InstallSelection] = None,
 ) -> int:
-    files = managed_files(home, agents)
+    files = managed_files(home, agents, selection=selection)
     conflicts = [
         item.target
         for item in files
         if item.target.exists() and not _same_content(item.source, item.target)
     ]
     if conflicts and not force:
-        print("存在不同内容，未覆盖。确认后使用 install --force：", file=sys.stderr)
+        print("存在不同内容，未覆盖。请重新安装并在菜单中选择以仓库内容覆盖：", file=sys.stderr)
         for target in conflicts:
             print(f"- {target}", file=sys.stderr)
         return 2
@@ -160,10 +181,12 @@ def update(
     home: Path,
     force: bool,
     agents: Optional[tuple[str, ...]] = None,
+    *,
+    selection: Optional[InstallSelection] = None,
 ) -> int:
     conflicts: list[Path] = []
     changed = 0
-    for item in managed_files(home, agents):
+    for item in managed_files(home, agents, selection=selection):
         if _same_content(item.source, item.target):
             continue
         if item.target.exists() and not force:
@@ -183,10 +206,13 @@ def update(
     return 2
 
 
-def check(home: Path, agents: Optional[tuple[str, ...]] = None) -> int:
+def check(
+    home: Path, agents: Optional[tuple[str, ...]] = None,
+    *, selection: Optional[InstallSelection] = None,
+) -> int:
     drifted = [
         item.target
-        for item in managed_files(home, agents)
+        for item in managed_files(home, agents, selection=selection)
         if not _same_content(item.source, item.target)
     ]
     if not drifted:
@@ -199,34 +225,15 @@ def check(home: Path, agents: Optional[tuple[str, ...]] = None) -> int:
     return 1
 
 
-def _mcp_paths(home: Path) -> tuple[Path, Path]:
-    root = home / ".config" / "agents" / "mcp"
-    return root / "context7_mcp.py", root / "context7-api-key"
-
-
-def _resolved_mcp_servers(home: Path, agent: str) -> dict[str, dict[str, Any]]:
+def _resolved_mcp_servers(
+    agent: str, servers: Optional[tuple[str, ...]] = None,
+) -> dict[str, dict[str, Any]]:
     definitions = json.loads(MCP_CONFIG_SOURCE.read_text(encoding="utf-8"))
-    wrapper, secret = _mcp_paths(home)
-    python = sys.executable if os.name == "nt" else shutil.which("python3") or sys.executable
-    replacements = {
-        "@python": python,
-        "@context7-wrapper": str(wrapper),
-        "@context7-api-key": str(secret),
+    return {
+        name: {"transport": definition["transport"], "url": definition["url"]}
+        for name, definition in definitions.items()
+        if agent in definition["agents"] and (servers is None or name in servers)
     }
-    resolved: dict[str, dict[str, Any]] = {}
-    for name, definition in definitions.items():
-        if agent not in definition["agents"]:
-            continue
-        if definition["transport"] == "http":
-            resolved[name] = {"transport": "http", "url": definition["url"]}
-            continue
-        args = definition.get("agentArgs", {}).get(agent, definition["args"])
-        resolved[name] = {
-            "transport": "stdio",
-            "command": replacements.get(definition["command"], definition["command"]),
-            "args": [replacements.get(value, value) for value in args],
-        }
-    return resolved
 
 
 def _json_mcp_path(home: Path, agent: str) -> Path:
@@ -234,9 +241,7 @@ def _json_mcp_path(home: Path, agent: str) -> Path:
         return home / ".claude.json"
     if agent == "cursor":
         return home / ".cursor" / "mcp.json"
-    if agent == "omp":
-        return home / ".omp" / "agent" / "mcp.json"
-    return home / ".config" / "mcp" / "mcp.json"
+    raise ValueError(f"不支持 JSON MCP 配置的 Agent：{agent}")
 
 
 def _read_json_mcp_servers(home: Path, agent: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -328,73 +333,27 @@ def _run_codex_mcp_command(
     ).returncode
 
 
-def _existing_context7_key(home: Path) -> Optional[str]:
-    environment_key = os.environ.get("CONTEXT7_API_KEY", "").strip()
-    if environment_key:
-        return environment_key
-
-    _, secret = _mcp_paths(home)
-    if not secret.exists():
-        return None
-    saved = secret.read_text(encoding="utf-8").strip()
-    return saved or None
-
-
-def _save_context7_key(home: Path, api_key: str) -> None:
-    _, secret = _mcp_paths(home)
-    secret.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=secret.parent,
-        delete=False,
-    ) as handle:
-        temporary = Path(handle.name)
-        handle.write(api_key + "\n")
-    os.chmod(temporary, 0o600)
-    os.replace(temporary, secret)
-
-
-def _require_context7_key(home: Path) -> Optional[str]:
-    api_key = _existing_context7_key(home)
-    if api_key:
-        _save_context7_key(home, api_key)
-        return api_key
-    if not sys.stdin.isatty():
-        print(
-            "缺少 Context7 API Key。请在交互终端重新执行，或临时设置 CONTEXT7_API_KEY。",
-            file=sys.stderr,
-        )
-        return None
-    print("请先将 Context7 API Key 保存到密码管理器，然后在下方粘贴；输入不会回显。")
-    api_key = getpass.getpass("Context7 API Key: ").strip()
-    if not api_key:
-        print("Context7 API Key 不能为空。", file=sys.stderr)
-        return None
-    _save_context7_key(home, api_key)
-    return api_key
-
-
 def manage_mcp_servers(
     home: Path,
     command: str,
     agents: Optional[tuple[str, ...]] = None,
     *,
     force: bool = False,
+    servers: Optional[tuple[str, ...]] = None,
 ) -> int:
-    selected = tuple(agent for agent in (agents or MCP_AGENTS) if agent in MCP_AGENTS)
+    if servers == ():
+        return 0
+    selected = tuple(
+        agent for agent in (MCP_AGENTS if agents is None else agents)
+        if agent in MCP_AGENTS
+    )
     if not selected:
         return 0
 
-    wrapper, secret = _mcp_paths(home)
     if command == "check":
         drifted: list[str] = []
-        if not _same_content(CONTEXT7_WRAPPER_SOURCE, wrapper):
-            drifted.append(str(wrapper))
-        if not secret.is_file() or not secret.read_text(encoding="utf-8").strip():
-            drifted.append(str(secret))
         for agent in selected:
-            desired = _resolved_mcp_servers(home, agent)
+            desired = _resolved_mcp_servers(agent, servers)
             try:
                 if agent == "codex":
                     _, current = _read_codex_mcp_servers(home)
@@ -424,7 +383,7 @@ def manage_mcp_servers(
     if command == "uninstall" and not force:
         conflicts: list[str] = []
         for agent in selected:
-            desired = _resolved_mcp_servers(home, agent)
+            desired = _resolved_mcp_servers(agent, servers)
             try:
                 if agent == "codex":
                     _, current = _read_codex_mcp_servers(home)
@@ -447,18 +406,9 @@ def manage_mcp_servers(
                 print(f"- {item}", file=sys.stderr)
             return 2
 
-    if command in ("install", "update"):
-        if wrapper.exists() and not _same_content(CONTEXT7_WRAPPER_SOURCE, wrapper) and not force:
-            print(f"MCP 启动器存在本地差异，已保留：{wrapper}", file=sys.stderr)
-            return 2
-        if not _same_content(CONTEXT7_WRAPPER_SOURCE, wrapper):
-            _atomic_copy(CONTEXT7_WRAPPER_SOURCE, wrapper)
-        if _require_context7_key(home) is None:
-            return 1
-
     conflicts: list[str] = []
     for agent in selected:
-        desired = _resolved_mcp_servers(home, agent)
+        desired = _resolved_mcp_servers(agent, servers)
         try:
             if agent == "codex":
                 codex, current = _read_codex_mcp_servers(home)
@@ -514,15 +464,13 @@ def manage_mcp_servers(
                         continue
                     if expected["transport"] == "http":
                         raw[name] = {"url": expected["url"]}
-                        if agent != "pi":
-                            raw[name]["type"] = "http"
+                        raw[name]["type"] = "http"
                     else:
                         raw[name] = {
                             "command": expected["command"],
                             "args": expected["args"],
                         }
-                        if agent != "pi":
-                            raw[name]["type"] = "stdio"
+                        raw[name]["type"] = "stdio"
                     changed = True
             if changed:
                 _write_json(_json_mcp_path(home, agent), document)
@@ -530,74 +478,12 @@ def manage_mcp_servers(
             print(error, file=sys.stderr)
             return 1
 
-    if command == "uninstall" and set(MCP_AGENTS).issubset(selected):
-        if wrapper.is_file():
-            wrapper.unlink()
-        _remove_empty_parents(wrapper.parent, home)
-
     if conflicts:
         action = "删除" if command == "uninstall" else "覆盖"
         print(f"以下 MCP 配置存在本地差异，未{action}：", file=sys.stderr)
         for item in conflicts:
             print(f"- {item}", file=sys.stderr)
         return 2
-    return 0
-
-
-def manage_third_party_packages(
-    home: Path,
-    command: str,
-    agents: Optional[tuple[str, ...]] = None,
-) -> int:
-    selected_agents = agents or SUPPORTED_AGENTS
-    if "pi" not in selected_agents:
-        return 0
-
-    pi = shutil.which("pi")
-    if pi is None:
-        print("未找到 Pi CLI，无法管理 pi-cursor Package。", file=sys.stderr)
-        return 1
-
-    environment = os.environ.copy()
-    environment["PI_CODING_AGENT_DIR"] = str(home / ".pi" / "agent")
-    listed = subprocess.run(
-        [pi, "list"],
-        env=environment,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if listed.returncode != 0:
-        print(listed.stderr, file=sys.stderr, end="")
-        return listed.returncode
-
-    missing = [package for package in PI_PACKAGES if package not in listed.stdout]
-    if command == "check":
-        if not missing:
-            return 0
-        for package in missing:
-            print(f"缺少 Pi Package：{package}", file=sys.stderr)
-        return 1
-
-    for package in PI_PACKAGES:
-        installed = package not in missing
-        if command == "install" and installed:
-            continue
-        if command == "uninstall":
-            if not installed:
-                continue
-            package_command = "remove"
-        elif command == "update" and not installed:
-            package_command = "install"
-        else:
-            package_command = command
-        result = subprocess.run(
-            [pi, package_command, package],
-            env=environment,
-            check=False,
-        )
-        if result.returncode != 0:
-            return result.returncode
     return 0
 
 
@@ -614,9 +500,11 @@ def uninstall(
     home: Path,
     force: bool,
     agents: Optional[tuple[str, ...]] = None,
+    *,
+    selection: Optional[InstallSelection] = None,
 ) -> int:
     include_shared = agents is None
-    files = managed_files(home, agents, include_shared=include_shared)
+    files = managed_files(home, agents, include_shared=include_shared, selection=selection)
     conflicts = [
         item.target
         for item in files
@@ -640,89 +528,136 @@ def uninstall(
     return 0
 
 
-def _select_install_agents() -> tuple[str, ...]:
-    if not sys.stdin.isatty():
-        raise ValueError("非交互安装必须通过 --agent 指定 Agent。")
-    print("选择要安装的 Agent 支持（可多选）：")
-    for number, agent in enumerate(SUPPORTED_AGENTS, 1):
-        print(f"  {number}. {agent}")
-    print("输入编号或名称，以空格或逗号分隔；输入 all 安装全部，q 取消。")
+def _select_numbers(
+    title: str, options: tuple[str, ...],
+    *, multiple: bool = True, allow_skip: bool = True,
+) -> tuple[str, ...]:
+    mode = "可多选" if multiple else "单选"
+    print(f"选择{title}（{mode}）：")
+    for number, label in enumerate(options, 1):
+        print(f"  {number}. {label}")
+    all_number = len(options) + 1
+    cancel_number = len(options) + (2 if multiple else 1)
+    if multiple:
+        print(f"  {all_number}. 全选")
+    if allow_skip:
+        print("  0. 跳过")
+    print(f"  {cancel_number}. 取消安装")
+    print("输入数字，以空格或逗号分隔。")
     while True:
         try:
-            answer = input("Agent: ").strip().lower()
-        except EOFError as error:
-            raise ValueError("安装已取消，未选择 Agent。") from error
-        if answer == "q":
-            raise ValueError("安装已取消。")
-        if answer == "all":
-            return SUPPORTED_AGENTS
+            answer = input(f"{title}: ").strip()
+        except (EOFError, KeyboardInterrupt) as error:
+            raise ValueError("安装已取消，未写入配置。") from error
+        if answer == str(cancel_number):
+            raise ValueError("安装已取消，未写入配置。")
+        if allow_skip and answer == "0":
+            return ()
+        if multiple and answer == str(all_number):
+            return options
         choices = answer.replace(",", " ").split()
-        selected = []
-        for choice in choices:
-            if choice in SUPPORTED_AGENTS:
-                selected.append(choice)
-            elif choice in {str(i) for i in range(1, len(SUPPORTED_AGENTS) + 1)}:
-                selected.append(SUPPORTED_AGENTS[int(choice) - 1])
-            else:
-                break
-        else:
-            if selected:
-                return tuple(dict.fromkeys(selected))
-        print("请选择有效的 Agent；空输入不会安装任何 Agent。")
+        valid = {str(number): option for number, option in enumerate(options, 1)}
+        if choices and (multiple or len(choices) == 1) and all(choice in valid for choice in choices):
+            return tuple(dict.fromkeys(valid[choice] for choice in choices))
+        print("请输入有效数字；空输入、名称和混合特殊选项无效。")
+
+
+def _select_install_agents() -> tuple[str, ...]:
+    return _select_numbers("Agent", SUPPORTED_AGENTS)
+
+
+def _select_install_configuration() -> tuple[InstallSelection, bool]:
+    if not sys.stdin.isatty():
+        raise ValueError("安装需要交互终端，请直接运行安装脚本并输入数字选择。")
+    agents = _select_install_agents()
+    skills = tuple(sorted({name for name, _, _ in _skill_files(CONFIG_ROOT / "skills")}))
+    mcps = tuple(json.loads(MCP_CONFIG_SOURCE.read_text(encoding="utf-8")))
+    selected_skills = _select_numbers("Skill", skills) if agents else ()
+    selected_mcps = _select_numbers("MCP", mcps) if agents else ()
+    labels = ("全局 Agent 规则", "Git 全局忽略", "Ruff 默认配置")
+    selected_configs = _select_numbers("开发工具配置", labels)
+    configs = tuple(
+        name for name, label in zip(("rules", "git", "ruff"), labels)
+        if label in selected_configs
+    )
+    policy = _select_numbers(
+        "已有不同内容的处理方式", ("保留已有内容", "以仓库内容覆盖"),
+        multiple=False, allow_skip=False,
+    )
+    selection = InstallSelection(agents, selected_skills, selected_mcps, configs)
+    return selection, policy == ("以仓库内容覆盖",)
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("install", "update", "check", "uninstall"))
-    parser.add_argument("--force", action="store_true", help="覆盖或删除存在本地修改的受管文件")
-    parser.add_argument(
-        "--agent",
-        action="append",
-        choices=SUPPORTED_AGENTS,
-        dest="agents",
-        help="只管理指定 Agent，可重复使用；安装时未指定则交互选择，其他命令默认全部",
-    )
-    parser.add_argument("--home", type=Path, default=Path.home(), help=argparse.SUPPRESS)
+    commands = parser.add_subparsers(dest="command", required=True)
+    for name in ("install", "update", "check", "uninstall"):
+        command = commands.add_parser(name)
+        command.add_argument("--home", type=Path, default=Path.home(), help=argparse.SUPPRESS)
+        if name != "install":
+            command.add_argument("--force", action="store_true", help="覆盖或删除存在本地修改的受管文件")
+            command.add_argument(
+                "--agent", action="append", choices=SUPPORTED_AGENTS, dest="agents",
+                help="只管理指定 Agent，可重复使用",
+            )
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
     home = args.home.expanduser().resolve()
-    agents = tuple(dict.fromkeys(args.agents)) if args.agents else None
     if args.command == "install":
-        if agents is None:
-            try:
-                agents = _select_install_agents()
-            except ValueError as error:
-                print(error, file=sys.stderr)
-                return 2
-        result = install(home, args.force, agents)
+        try:
+            selection, force = _select_install_configuration()
+        except (ValueError, OSError) as error:
+            print(error, file=sys.stderr)
+            return 2
+        print(f"Context7 请按所用 Agent 单独安装：{CONTEXT7_INSTALL_DOCS}")
+        result = install(home, force, selection.agents, selection=selection)
         if result != 0:
             return result
-        package_result = manage_third_party_packages(home, "install", agents)
-        if package_result != 0:
-            return package_result
-        return manage_mcp_servers(home, "install", agents, force=args.force)
+        result = manage_mcp_servers(
+            home, "install", selection.agents, force=force, servers=selection.mcps
+        )
+        if result == 0:
+            _write_json(_selection_path(home), asdict(selection))
+        return result
+
+    agents = tuple(dict.fromkeys(args.agents)) if args.agents else None
+    try:
+        selection = _read_selection(home)
+    except (ValueError, OSError, TypeError) as error:
+        print(f"无法读取安装选择：{error}", file=sys.stderr)
+        return 2
+    if selection is not None and agents is not None:
+        agents = tuple(agent for agent in agents if agent in selection.agents)
+    mcp_agents = agents if agents is not None else (selection.agents if selection else None)
+    servers = selection.mcps if selection else None
     if args.command == "update":
-        result = update(home, args.force, agents)
-        package_result = manage_third_party_packages(home, "update", agents)
-        mcp_result = manage_mcp_servers(home, "update", agents, force=args.force)
-        return result or package_result or mcp_result
+        print(f"Context7 请按所用 Agent 单独安装：{CONTEXT7_INSTALL_DOCS}")
+        result = update(home, args.force, agents, selection=selection)
+        mcp_result = manage_mcp_servers(home, "update", mcp_agents, force=args.force, servers=servers)
+        return result or mcp_result
     if args.command == "uninstall":
-        result = uninstall(home, args.force, agents)
+        result = uninstall(home, args.force, agents, selection=selection)
         if result != 0:
             return result
-        mcp_result = manage_mcp_servers(home, "uninstall", agents, force=args.force)
-        if mcp_result != 0:
-            return mcp_result
-        return manage_third_party_packages(home, "uninstall", agents)
+        result = manage_mcp_servers(home, "uninstall", mcp_agents, force=args.force, servers=servers)
+        if result == 0 and agents is None:
+            _selection_path(home).unlink(missing_ok=True)
+            _remove_empty_parents(_selection_path(home).parent, home)
+        elif result == 0 and selection is not None:
+            remaining = tuple(agent for agent in selection.agents if agent not in agents)
+            remaining_selection = InstallSelection(
+                remaining, selection.skills, selection.mcps, selection.configs
+            )
+            _write_json(_selection_path(home), asdict(remaining_selection))
+        return result
     if args.force:
         raise SystemExit("check 不支持 --force")
-    result = check(home, agents)
-    package_result = manage_third_party_packages(home, "check", agents)
-    mcp_result = manage_mcp_servers(home, "check", agents)
-    return result or package_result or mcp_result
+    result = check(home, agents, selection=selection)
+    mcp_result = manage_mcp_servers(home, "check", mcp_agents, servers=servers)
+    return result or mcp_result
 
 
 if __name__ == "__main__":

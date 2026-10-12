@@ -34,7 +34,7 @@
 
 - 遵循项目已有 Git 工作流和提交规范；未指定时使用 `<类型前缀>/<简短描述>` 功能分支，主分支和既有版本干线除外。
 - 子分支默认通过 Squash merge 合入主分支或版本干线。
-- Commit 使用 Conventional Commits，每个 Commit 只包含一个主题。
+- Commit 使用 Conventional Commits，标题格式为 `type: 描述`，不使用 scope（如 `feat(xxx):`）；每个 Commit 只包含一个主题。
 - Commit 必须包含有效正文，清楚覆盖问题、原因、修改和结果；形式与顺序不限。
 - 不得只罗列文件、使用占位符或声称未执行的验证。
 - 提交前审查工作区、暂存区和变更范围，禁止使用 `--no-verify` 绕过 Hook。

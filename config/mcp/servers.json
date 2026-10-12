@@ -1,13 +1,10 @@
 {
-  "context7": {
-    "agents": ["claude", "codex", "cursor", "pi", "omp"],
-    "transport": "stdio",
-    "command": "@python",
-    "args": ["@context7-wrapper", "--secret-file", "@context7-api-key"],
-    "secret": "context7-api-key"
-  },
   "deepwiki": {
-    "agents": ["claude", "codex", "cursor", "pi", "omp"],
+    "agents": [
+      "claude",
+      "codex",
+      "cursor"
+    ],
     "transport": "http",
     "url": "https://mcp.deepwiki.com/mcp"
   }

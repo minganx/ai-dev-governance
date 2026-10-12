@@ -2,7 +2,7 @@
 
 按需复制到项目根目录：
 
-- `AGENTS.md`：Cursor、Pi 和 oh-my-pi 原生读取的项目主规则，也是其他 Agent 的项目事实来源。
+- `AGENTS.md`：Cursor 原生读取的项目主规则，也是其他 Agent 的项目事实来源。
 - `CLAUDE.md`：Claude Code 薄入口，只导入根目录 `AGENTS.md`。
 - `.codex/AGENTS.md`：Codex 薄入口，要求优先读取根目录 `AGENTS.md`。
 

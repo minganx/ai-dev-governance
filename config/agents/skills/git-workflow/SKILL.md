@@ -19,7 +19,7 @@ description: 执行 Git 提交、分支、合并、发布和回溯审查，统�
 
 ## Commit 规范
 
-- 使用 Conventional Commits。
+- 使用 Conventional Commits，标题格式为 `type: 描述`，不使用 scope（如 `feat(xxx):`）。
 - 首行简洁说明业务变化。
 - 必须包含有效正文，清楚覆盖问题现象、分析原因、修改内容和修改后结果。
 - 形式和顺序不限，不要求固定标签。
