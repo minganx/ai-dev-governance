@@ -17,6 +17,9 @@ from typing import Any, Optional
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_ROOT = REPOSITORY_ROOT / "config" / "agents"
 CLAUDE_ENTRY = REPOSITORY_ROOT / "config" / "tool-entries" / "claude" / "CLAUDE.md"
+CURSOR_RULE_HEADER = (
+    "---\ndescription: 全局开发规则，由 ai-dev-governance 的 AGENTS.md 生成\nalwaysApply: true\n---\n\n"
+).encode("utf-8")
 GIT_IGNORE_SOURCE = REPOSITORY_ROOT / "config" / "git" / "gitignore_global"
 RUFF_CONFIG_SOURCE = REPOSITORY_ROOT / "config" / "ruff" / "ruff.toml"
 MCP_CONFIG_SOURCE = REPOSITORY_ROOT / "config" / "mcp" / "servers.json"
@@ -35,6 +38,10 @@ AGENT_SKILL_DIRS = {
 class ManagedFile:
     source: Path
     target: Path
+    header: bytes = b""
+
+    def content(self) -> bytes:
+        return self.header + self.source.read_bytes()
 
 
 @dataclass(frozen=True)
@@ -111,6 +118,14 @@ def managed_files(
             files.append(ManagedFile(CLAUDE_ENTRY, home / ".claude" / "CLAUDE.md"))
         if "codex" in selected_agents:
             files.append(ManagedFile(CONFIG_ROOT / "AGENTS.md", home / ".codex" / "AGENTS.md"))
+        if "cursor" in selected_agents:
+            files.append(
+                ManagedFile(
+                    CONFIG_ROOT / "AGENTS.md",
+                    home / ".cursor" / "rules" / "agents.mdc",
+                    CURSOR_RULE_HEADER,
+                )
+            )
 
     for skill_name, source, relative_path in _skill_files(CONFIG_ROOT / "skills"):
         if selection is not None and skill_name not in selection.skills:
@@ -135,16 +150,16 @@ def managed_files(
     return files
 
 
-def _same_content(source: Path, target: Path) -> bool:
-    return target.is_file() and source.read_bytes() == target.read_bytes()
+def _same_content(item: ManagedFile) -> bool:
+    return item.target.is_file() and item.content() == item.target.read_bytes()
 
 
-def _atomic_copy(source: Path, target: Path) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as handle:
+def _atomic_copy(item: ManagedFile) -> None:
+    item.target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=item.target.parent, delete=False) as handle:
         temporary = Path(handle.name)
-        handle.write(source.read_bytes())
-    os.replace(temporary, target)
+        handle.write(item.content())
+    os.replace(temporary, item.target)
 
 
 def install(
@@ -158,7 +173,7 @@ def install(
     conflicts = [
         item.target
         for item in files
-        if item.target.exists() and not _same_content(item.source, item.target)
+        if item.target.exists() and not _same_content(item)
     ]
     if conflicts and not force:
         print("存在不同内容，未覆盖。请重新安装并在菜单中选择以仓库内容覆盖：", file=sys.stderr)
@@ -168,9 +183,9 @@ def install(
 
     changed = 0
     for item in files:
-        if _same_content(item.source, item.target):
+        if _same_content(item):
             continue
-        _atomic_copy(item.source, item.target)
+        _atomic_copy(item)
         changed += 1
         print(f"installed {item.target}")
     print(f"完成：更新 {changed} 个文件。")
@@ -187,12 +202,12 @@ def update(
     conflicts: list[Path] = []
     changed = 0
     for item in managed_files(home, agents, selection=selection):
-        if _same_content(item.source, item.target):
+        if _same_content(item):
             continue
         if item.target.exists() and not force:
             conflicts.append(item.target)
             continue
-        _atomic_copy(item.source, item.target)
+        _atomic_copy(item)
         changed += 1
         print(f"updated {item.target}")
 
@@ -213,7 +228,7 @@ def check(
     drifted = [
         item.target
         for item in managed_files(home, agents, selection=selection)
-        if not _same_content(item.source, item.target)
+        if not _same_content(item)
     ]
     if not drifted:
         print("全局规则和 Skill 与治理仓库一致。")
@@ -508,7 +523,7 @@ def uninstall(
     conflicts = [
         item.target
         for item in files
-        if item.target.exists() and not _same_content(item.source, item.target)
+        if item.target.exists() and not _same_content(item)
     ]
     if conflicts and not force:
         print("存在本地修改，未删除。确认后使用 uninstall --force：", file=sys.stderr)

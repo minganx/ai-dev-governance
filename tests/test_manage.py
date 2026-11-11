@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 
 from tools.manage import (
     CLAUDE_ENTRY,
+    InstallSelection,
     SUPPORTED_AGENTS,
     build_parser,
     _select_install_agents,
@@ -366,6 +367,7 @@ class ManageTest(unittest.TestCase):
                 (home / ".claude" / "CLAUDE.md").read_text(encoding="utf-8"),
                 CLAUDE_ENTRY.read_text(encoding="utf-8"),
             )
+            self.assertTrue((home / ".cursor" / "rules" / "agents.mdc").is_file())
             self.assertTrue((home / ".gitignore_global").is_file())
             self.assertTrue(any(item.source.name == "ruff.toml" for item in managed_files(home)))
 
@@ -382,6 +384,23 @@ class ManageTest(unittest.TestCase):
             )
             self.assertFalse((home / ".codex").exists())
             self.assertFalse((home / ".cursor").exists())
+
+    def test_cursor_rule_wraps_shared_agents_rules(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            selection = InstallSelection(
+                agents=("cursor",), skills=(), mcps=(), configs=("rules",)
+            )
+            self.assertEqual(install(home, force=False, selection=selection), 0)
+            self.assertEqual(check(home, selection=selection), 0)
+            rule = (home / ".cursor" / "rules" / "agents.mdc").read_text(encoding="utf-8")
+            shared_agents = (home / ".config" / "agents" / "AGENTS.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertTrue(rule.startswith("---\n"))
+            self.assertIn("alwaysApply: true", rule)
+            self.assertTrue(rule.endswith(shared_agents))
+            self.assertFalse((home / ".codex").exists())
 
     def test_update_adds_missing_files_and_preserves_local_changes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

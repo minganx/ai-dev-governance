@@ -50,7 +50,7 @@
 | `~/.config/agents/`                           | 所选共享规则、Skill 副本和安装选择记录 |
 | `~/.claude/CLAUDE.md`、`~/.claude/skills/`    | Claude Code             |
 | `~/.codex/AGENTS.md`、`~/.codex/skills/`      | Codex                   |
-| `~/.cursor/skills/`                           | Cursor                  |
+| `~/.cursor/rules/agents.mdc`、`~/.cursor/skills/` | Cursor（`agents.mdc` 由 `AGENTS.md` 加规则头生成） |
 | `~/.claude.json`、`~/.codex/config.toml`      | Claude、Codex MCP       |
 | `~/.cursor/mcp.json`                          | Cursor MCP              |
 | `~/.gitignore_global`                         | Git 全局忽略            |
