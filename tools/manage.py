@@ -29,8 +29,8 @@ MCP_AGENTS = ("claude", "codex", "cursor")
 RETIRED_MCP_SERVERS = ("codegraph",)
 AGENT_SKILL_DIRS = {
     "claude": Path(".claude") / "skills",
-    "codex": Path(".codex") / "skills",
-    "cursor": Path(".cursor") / "skills",
+    "codex": Path(".agents") / "skills",
+    "cursor": Path(".agents") / "skills",
 }
 
 
@@ -142,8 +142,7 @@ def managed_files(
                     / relative_path,
                 )
             )
-        for agent in selected_agents:
-            skill_dir = AGENT_SKILL_DIRS[agent]
+        for skill_dir in dict.fromkeys(AGENT_SKILL_DIRS[agent] for agent in selected_agents):
             files.append(
                 ManagedFile(source, home / skill_dir / skill_name / relative_path)
             )
@@ -520,6 +519,14 @@ def uninstall(
 ) -> int:
     include_shared = agents is None
     files = managed_files(home, agents, include_shared=include_shared, selection=selection)
+    if agents is not None:
+        installed = selection.agents if selection else SUPPORTED_AGENTS
+        remaining = tuple(agent for agent in installed if agent not in agents)
+        still_used = {
+            item.target
+            for item in managed_files(home, remaining, include_shared=False, selection=selection)
+        }
+        files = [item for item in files if item.target not in still_used]
     conflicts = [
         item.target
         for item in files

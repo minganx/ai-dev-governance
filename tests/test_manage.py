@@ -84,7 +84,7 @@ class ManageTest(unittest.TestCase):
             home = Path(directory)
             # Cursor; review-code only; no MCP; Git only; preserve conflicts.
             self.assertEqual(self._run_main(home, "install", ["3", "4", "0", "2", "1"]), 0)
-            skill = home / ".cursor" / "skills" / "review-code" / "SKILL.md"
+            skill = home / ".agents" / "skills" / "review-code" / "SKILL.md"
             state = home / ".config" / "agents" / "install-selection.json"
             self.assertTrue(skill.is_file())
             self.assertEqual(json.loads(state.read_text()), {
@@ -100,7 +100,7 @@ class ManageTest(unittest.TestCase):
             self.assertEqual(self._run_main(home, "update"), 0)
             self.assertTrue(skill.is_file())
             self.assertEqual(self._run_main(home, "check"), 0)
-            self.assertEqual(len(list((home / ".cursor" / "skills").iterdir())), 1)
+            self.assertEqual(len(list((home / ".agents" / "skills").iterdir())), 1)
             self.assertFalse((home / ".cursor" / "mcp.json").exists())
             self.assertFalse((home / ".config" / "ruff").exists())
             self.assertEqual(self._run_main(home, "uninstall"), 0)
@@ -111,7 +111,7 @@ class ManageTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
             self.assertEqual(self._run_main(home, "install", ["4", "6", "0", "4", "1"]), 0)
-            for agent in (".claude", ".codex", ".cursor"):
+            for agent in (".claude", ".agents"):
                 self.assertTrue((home / agent / "skills" / "review-code" / "SKILL.md").is_file())
             for action in ("update", "check", "uninstall"):
                 self.assertEqual(self._run_main(home, action), 0)
@@ -127,7 +127,7 @@ class ManageTest(unittest.TestCase):
             config.write_text(json.dumps({"mcpServers": {"context7": context7}}))
             self.assertEqual(self._run_main(home, "install", ["3", "0", "1", "0", "1"]), 0)
             self.assertEqual(set(json.loads(config.read_text())["mcpServers"]), {"context7", "deepwiki"})
-            self.assertFalse((home / ".cursor" / "skills").exists())
+            self.assertFalse((home / ".agents").exists())
             self.assertEqual(self._run_main(home, "check"), 0)
             self.assertEqual(self._run_main(home, "uninstall"), 0)
             self.assertEqual(json.loads(config.read_text()), {"mcpServers": {"context7": context7}})
@@ -137,7 +137,7 @@ class ManageTest(unittest.TestCase):
             home = Path(directory)
             self.assertEqual(self._run_main(home, "install", ["0", "2", "1"]), 0)
             self.assertTrue((home / ".gitignore_global").is_file())
-            for agent in (".claude", ".codex", ".cursor"):
+            for agent in (".claude", ".codex", ".cursor", ".agents"):
                 self.assertFalse((home / agent).exists())
             self.assertEqual(self._run_main(home, "update"), 0)
             self.assertEqual(self._run_main(home, "check"), 0)
@@ -164,8 +164,19 @@ class ManageTest(unittest.TestCase):
             self.assertEqual(json.loads(state.read_text())["agents"], ["cursor"])
             self.assertEqual(self._run_main(home, "update"), 0)
             self.assertFalse((home / ".claude").exists())
-            self.assertTrue((home / ".cursor" / "skills" / "review-code" / "SKILL.md").is_file())
+            self.assertTrue((home / ".agents" / "skills" / "review-code" / "SKILL.md").is_file())
             self.assertEqual(self._run_main(home, "check"), 0)
+
+    def test_partial_uninstall_keeps_skills_shared_with_remaining_agent(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            self.assertEqual(self._run_main(home, "install", ["2 3", "4", "0", "0", "1"]), 0)
+            skill = home / ".agents" / "skills" / "review-code" / "SKILL.md"
+            self.assertEqual(self._run_main(home, "uninstall", None, "--agent", "cursor"), 0)
+            self.assertTrue(skill.is_file())
+            self.assertEqual(self._run_main(home, "check"), 0)
+            self.assertEqual(self._run_main(home, "uninstall", None, "--agent", "codex"), 0)
+            self.assertFalse((home / ".agents").exists())
 
     def test_invalid_selection_record_stops_before_writing(self) -> None:
         for document in ([], {"agents": "cursor", "skills": [], "mcps": [], "configs": []},
@@ -354,8 +365,10 @@ class ManageTest(unittest.TestCase):
             self.assertEqual(install(home, force=False), 0)
             self.assertEqual(check(home), 0)
             self.assertTrue(all(item.target.is_file() for item in managed_files(home)))
-            for retired in (".pi", ".omp", ".agents"):
+            for retired in (".pi", ".omp"):
                 self.assertFalse((home / retired).exists())
+            self.assertFalse((home / ".codex" / "skills").exists())
+            self.assertFalse((home / ".cursor" / "skills").exists())
             shared_agents = (home / ".config" / "agents" / "AGENTS.md").read_text(
                 encoding="utf-8"
             )
@@ -428,7 +441,7 @@ class ManageTest(unittest.TestCase):
             self.assertEqual(install(home, force=False), 0)
             self.assertEqual(uninstall(home, force=False, agents=("claude",)), 0)
             self.assertFalse((home / ".claude").exists())
-            self.assertFalse((home / ".agents").exists())
+            self.assertTrue((home / ".agents" / "skills" / "review-code" / "SKILL.md").is_file())
             self.assertTrue((home / ".config" / "agents" / "AGENTS.md").is_file())
             self.assertTrue((home / ".codex" / "AGENTS.md").is_file())
 
