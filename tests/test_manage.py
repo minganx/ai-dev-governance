@@ -26,6 +26,8 @@ from tools.manage import (
     update,
 )
 
+SKILL_COUNT = len({name for name, _, _ in _skill_files(CONFIG_ROOT / "skills")})
+
 
 class ManageTest(unittest.TestCase):
     @patch("tools.manage.sys.stdin.isatty", return_value=True)
@@ -74,7 +76,8 @@ class ManageTest(unittest.TestCase):
                     return main()
 
     def test_install_cancel_at_each_stage_writes_nothing(self) -> None:
-        for answers in (["5"], ["3", "7"], ["3", "0", "3"], ["3", "0", "0", "5"], ["3", "0", "0", "0", "3"]):
+        cancel_skill = str(SKILL_COUNT + 2)
+        for answers in (["5"], ["3", cancel_skill], ["3", "0", "3"], ["3", "0", "0", "5"], ["3", "0", "0", "0", "3"]):
             with self.subTest(answers=answers), tempfile.TemporaryDirectory() as directory:
                 home = Path(directory)
                 self.assertEqual(self._run_main(home, "install", list(answers)), 2)
@@ -111,7 +114,7 @@ class ManageTest(unittest.TestCase):
     def test_all_agents_with_skipped_mcp_need_no_agent_cli(self, run: Mock) -> None:
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
-            self.assertEqual(self._run_main(home, "install", ["4", "6", "0", "4", "1"]), 0)
+            self.assertEqual(self._run_main(home, "install", ["4", str(SKILL_COUNT + 1), "0", "4", "1"]), 0)
             for agent in (".claude", ".agents"):
                 self.assertTrue((home / agent / "skills" / "review-code" / "SKILL.md").is_file())
             for action in ("update", "check", "uninstall"):
@@ -154,7 +157,7 @@ class ManageTest(unittest.TestCase):
             self.assertEqual(target.read_text(), "local")
             self.assertFalse((home / ".config" / "agents" / "install-selection.json").exists())
             self.assertEqual(self._run_main(home, "install", ["0", "2", "2"]), 0)
-            self.assertNotEqual(target.read_text(), "local")
+            self.assertNotEqual(target.read_text(encoding="utf-8"), "local")
 
     def test_partial_uninstall_updates_selection(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -281,7 +284,7 @@ class ManageTest(unittest.TestCase):
 
             files = _skill_files(skills_root)
 
-            self.assertEqual(
+            self.assertCountEqual(
                 [(name, relative.as_posix()) for name, _, relative in files],
                 [("notes", "SKILL.md"), ("notes", "scripts/export.py")],
             )
