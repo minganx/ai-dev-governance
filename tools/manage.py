@@ -32,6 +32,7 @@ AGENT_SKILL_DIRS = {
     "codex": Path(".agents") / "skills",
     "cursor": Path(".agents") / "skills",
 }
+RETIRED_SKILL_DIRS = (Path(".codex") / "skills", Path(".cursor") / "skills")
 
 
 @dataclass(frozen=True)
@@ -149,6 +150,38 @@ def managed_files(
     return files
 
 
+def _retired_skill_copies(home: Path) -> list[tuple[Path, bool]]:
+    skills_root = CONFIG_ROOT / "skills"
+    copies: list[tuple[Path, bool]] = []
+    for retired_dir in RETIRED_SKILL_DIRS:
+        for skill_entry in sorted(skills_root.glob("*/SKILL.md")):
+            target = home / retired_dir / skill_entry.parent.name
+            if not target.is_dir():
+                continue
+            target_files = {
+                path.relative_to(target): path.read_bytes()
+                for path in target.rglob("*") if path.is_file()
+            }
+            source_files = {
+                path.relative_to(skill_entry.parent): path.read_bytes()
+                for path in skill_entry.parent.rglob("*") if path.is_file()
+            }
+            copies.append((target, target_files == source_files))
+    return copies
+
+
+def _remove_retired_skills(home: Path, force: bool) -> list[Path]:
+    conflicts: list[Path] = []
+    for target, same in _retired_skill_copies(home):
+        if not same and not force:
+            conflicts.append(target)
+            continue
+        shutil.rmtree(target)
+        _remove_empty_parents(target.parent, home)
+        print(f"removed retired skill {target}")
+    return conflicts
+
+
 def _same_content(item: ManagedFile) -> bool:
     return item.target.is_file() and item.content() == item.target.read_bytes()
 
@@ -209,6 +242,7 @@ def update(
         _atomic_copy(item)
         changed += 1
         print(f"updated {item.target}")
+    conflicts.extend(_remove_retired_skills(home, force))
 
     print(f"完成：更新 {changed} 个文件。")
     if not conflicts:
@@ -225,10 +259,13 @@ def check(
     *, selection: Optional[InstallSelection] = None,
 ) -> int:
     drifted = [
-        item.target
+        str(item.target)
         for item in managed_files(home, agents, selection=selection)
         if not _same_content(item)
     ]
+    drifted.extend(
+        f"{target}（已退役，执行 update 清理）" for target, _ in _retired_skill_copies(home)
+    )
     if not drifted:
         print("全局规则和 Skill 与治理仓库一致。")
         return 0

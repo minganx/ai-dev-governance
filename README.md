@@ -116,6 +116,8 @@ py -3 .\tools\manage.py check
 
 更新会沿用设备保存的安装选择，跳过内容一致的文件，补齐所选配置缺失的文件。所选 Skill 的完整目录（包括 `scripts/`、`references/`、`assets/`）一起更新；新增 Skill 不会自动安装，需要重新运行安装菜单选择。第三方 Skill、插件和扩展不经过复制更新，使用 `config/agents/README.md` 中对应工具的官方命令安装和更新。
 
+Codex、Cursor 的 Skill 原先复制到 `~/.codex/skills/`、`~/.cursor/skills/`。更新会删除这两个目录中与仓库 Skill 同名且内容一致的副本，`check` 会报告其残留；不同名的 Skill 和 Codex 自带的 `.system` 不处理。
+
 如果设备文件与仓库版本不同，更新器会保留设备文件、继续更新其他安全项，并以状态码 `2` 报告差异。确认全部差异都应以仓库版本覆盖时使用：
 
 ```bash

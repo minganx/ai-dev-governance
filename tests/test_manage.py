@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 
 from tools.manage import (
     CLAUDE_ENTRY,
+    CONFIG_ROOT,
     InstallSelection,
     SUPPORTED_AGENTS,
     build_parser,
@@ -166,6 +167,27 @@ class ManageTest(unittest.TestCase):
             self.assertFalse((home / ".claude").exists())
             self.assertTrue((home / ".agents" / "skills" / "review-code" / "SKILL.md").is_file())
             self.assertEqual(self._run_main(home, "check"), 0)
+
+    def test_update_removes_retired_skill_copies(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            self.assertEqual(install(home, force=False, agents=("cursor",)), 0)
+            source = CONFIG_ROOT / "skills" / "review-code" / "SKILL.md"
+            clean = home / ".cursor" / "skills" / "review-code" / "SKILL.md"
+            edited = home / ".codex" / "skills" / "review-code" / "SKILL.md"
+            other = home / ".codex" / "skills" / "local-skill" / "SKILL.md"
+            for path, content in ((clean, source.read_bytes()), (edited, b"local"), (other, b"local")):
+                path.parent.mkdir(parents=True)
+                path.write_bytes(content)
+
+            self.assertEqual(check(home, agents=("cursor",)), 1)
+            self.assertEqual(update(home, force=False, agents=("cursor",)), 2)
+            self.assertFalse((home / ".cursor" / "skills").exists())
+            self.assertEqual(edited.read_bytes(), b"local")
+            self.assertEqual(update(home, force=True, agents=("cursor",)), 0)
+            self.assertFalse(edited.parent.exists())
+            self.assertTrue(other.is_file())
+            self.assertEqual(check(home, agents=("cursor",)), 0)
 
     def test_partial_uninstall_keeps_skills_shared_with_remaining_agent(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
